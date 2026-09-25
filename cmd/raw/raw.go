@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/rohithmahesh3/plane-cli/internal/api"
+	"github.com/ba0f3/plane-cli/internal/api"
 	"github.com/spf13/cobra"
 )
 
