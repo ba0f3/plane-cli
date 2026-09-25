@@ -49,7 +49,6 @@ func init() {
 	workload.Flags().StringVar(&workloadMetric, "metric", "count", "Workload metric: count or points")
 	workload.Flags().StringVar(&workloadGroupBy, "group-by", "assignee", "Group by: assignee, workspace-assignee, project-assignee")
 	digest.Flags().IntVarP(&digestLimit, "limit", "l", 500, "Maximum digest rows")
-	digest.Flags().Set("since", "24h")
 
 	ReportCmd.AddCommand(summary, workload, digest)
 }
@@ -338,6 +337,9 @@ func runWorkload(cmd *cobra.Command, args []string) error {
 }
 
 func runDigest(cmd *cobra.Command, args []string) error {
+	if reportSince == "" {
+		reportSince = "24h"
+	}
 	records, err := collect()
 	if err != nil {
 		return err
