@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/rohithmahesh3/plane-cli/pkg/plane"
+	"github.com/ba0f3/plane-cli/pkg/plane"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
