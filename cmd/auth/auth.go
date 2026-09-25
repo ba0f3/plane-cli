@@ -71,17 +71,15 @@ func init() {
 }
 
 func runLogin(cmd *cobra.Command, args []string) error {
-	// Interactive prompts if flags not provided
 	if token == "" {
 		prompt := &survey.Password{
 			Message: "Enter your Plane API key:",
-			Help:    "You can generate an API key from Profile Settings → Personal Access Tokens",
+			Help:    "PAT, workspace access token (WSAT), or instance access token (IAT)",
 		}
 		if err := survey.AskOne(prompt, &token); err != nil {
 			return err
 		}
 	}
-
 	if token == "" {
 		return fmt.Errorf("API key is required")
 	}
@@ -90,65 +88,73 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		prompt := &survey.Input{
 			Message: "Enter your Plane API host:",
 			Default: config.DefaultAPIHost,
-			Help:    "The URL of your Plane instance (e.g., https://api.plane.so)",
+			Help:    "The URL of your Plane instance (e.g. https://work.example.com)",
 		}
 		if err := survey.AskOne(prompt, &apiHost); err != nil {
 			return err
 		}
 	}
 
-	if workspace == "" {
-		prompt := &survey.Input{
-			Message: "Enter your default workspace slug:",
-			Help:    "This is the unique identifier for your workspace (found in the URL)",
-		}
-		if err := survey.AskOne(prompt, &workspace); err != nil {
-			return err
-		}
-	}
-
-	if workspace == "" {
-		return fmt.Errorf("workspace is required")
-	}
-
-	// Test the credentials
 	if err := config.SetAPIKey(token); err != nil {
 		return fmt.Errorf("failed to save API key: %w", err)
 	}
-
-	// Initialize config
 	if err := config.InitConfig(); err != nil {
+		_ = config.DeleteAPIKey()
 		return fmt.Errorf("failed to initialize config: %w", err)
 	}
-
 	config.Cfg.APIHost = apiHost
 	config.Cfg.DefaultWorkspace = workspace
 
-	// Test authentication
-	client, err := api.NewClient()
+	client, err := api.NewClientNoWorkspace()
 	if err != nil {
 		_ = config.DeleteAPIKey()
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
-	_, err = client.GetUserInfo()
-	if err != nil {
-		_ = config.DeleteAPIKey()
-		return fmt.Errorf("authentication failed: %w", err)
+	ctx, ctxErr := client.GetAuthContext()
+	if ctxErr == nil {
+		switch ctx.ScopeLevel {
+		case "workspace":
+			if workspace == "" && ctx.Workspace != nil {
+				config.Cfg.DefaultWorkspace = ctx.Workspace.Slug
+			}
+		case "instance":
+			// Intentionally keep the workspace empty unless explicitly provided.
+		}
+		if _, err := client.ListWorkspaces(); err != nil {
+			_ = config.DeleteAPIKey()
+			return fmt.Errorf("workspace discovery failed: %w", err)
+		}
+	} else {
+		// Compatibility fallback for upstream Plane instances without auth/context.
+		if workspace == "" {
+			_ = config.DeleteAPIKey()
+			return fmt.Errorf("server does not expose service-token discovery and no workspace was supplied: %w", ctxErr)
+		}
+		client.SetWorkspace(workspace)
+		if _, err := client.GetUserInfo(); err != nil {
+			_ = config.DeleteAPIKey()
+			return fmt.Errorf("authentication failed: %w", err)
+		}
+		if _, err := client.ListProjects(); err != nil {
+			_ = config.DeleteAPIKey()
+			return fmt.Errorf("workspace validation failed: %w", err)
+		}
 	}
 
-	if _, err := client.ListProjects(); err != nil {
-		_ = config.DeleteAPIKey()
-		return fmt.Errorf("workspace validation failed: %w", err)
-	}
-
-	// Save config
 	if err := config.SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	output.Success(fmt.Sprintf("Successfully authenticated with workspace '%s'", workspace))
-
+	if ctx != nil {
+		if config.Cfg.DefaultWorkspace != "" {
+			output.Success(fmt.Sprintf("Authenticated as %s/%s; default workspace '%s'", ctx.PrincipalType, ctx.ScopeLevel, config.Cfg.DefaultWorkspace))
+		} else {
+			output.Success(fmt.Sprintf("Authenticated as %s/%s; no default workspace (instance-wide reads enabled)", ctx.PrincipalType, ctx.ScopeLevel))
+		}
+	} else {
+		output.Success(fmt.Sprintf("Successfully authenticated with workspace '%s'", config.Cfg.DefaultWorkspace))
+	}
 	return nil
 }
 
@@ -187,7 +193,7 @@ func runWhoami(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize config: %w", err)
 	}
 
-	client, err := api.NewClient()
+	client, err := api.NewClientNoWorkspace()
 	if err != nil {
 		return err
 	}
