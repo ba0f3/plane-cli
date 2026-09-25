@@ -15,6 +15,7 @@ import (
 	"github.com/rohithmahesh3/plane-cli/cmd/label"
 	"github.com/rohithmahesh3/plane-cli/cmd/module"
 	"github.com/rohithmahesh3/plane-cli/cmd/project"
+	"github.com/rohithmahesh3/plane-cli/cmd/report"
 	"github.com/rohithmahesh3/plane-cli/cmd/state"
 	issuetype "github.com/rohithmahesh3/plane-cli/cmd/type"
 	"github.com/rohithmahesh3/plane-cli/cmd/workspace"
@@ -111,6 +112,7 @@ func init() {
 	rootCmd.AddCommand(auth.AuthCmd)
 	rootCmd.AddCommand(workspace.WorkspaceCmd)
 	rootCmd.AddCommand(project.ProjectCmd)
+	rootCmd.AddCommand(report.ReportCmd)
 	rootCmd.AddCommand(issue.IssueCmd)
 	rootCmd.AddCommand(state.StateCmd)
 	rootCmd.AddCommand(label.LabelCmd)
