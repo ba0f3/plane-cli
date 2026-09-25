@@ -5,24 +5,24 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/rohithmahesh3/plane-cli/cmd/auth"
-	"github.com/rohithmahesh3/plane-cli/cmd/config"
-	"github.com/rohithmahesh3/plane-cli/cmd/context"
-	"github.com/rohithmahesh3/plane-cli/cmd/cycle"
-	"github.com/rohithmahesh3/plane-cli/cmd/inject"
-	"github.com/rohithmahesh3/plane-cli/cmd/intake"
-	"github.com/rohithmahesh3/plane-cli/cmd/issue"
-	"github.com/rohithmahesh3/plane-cli/cmd/label"
-	"github.com/rohithmahesh3/plane-cli/cmd/module"
-	"github.com/rohithmahesh3/plane-cli/cmd/project"
-	"github.com/rohithmahesh3/plane-cli/cmd/raw"
-	"github.com/rohithmahesh3/plane-cli/cmd/report"
-	"github.com/rohithmahesh3/plane-cli/cmd/state"
-	issuetype "github.com/rohithmahesh3/plane-cli/cmd/type"
-	"github.com/rohithmahesh3/plane-cli/cmd/workspace"
-	"github.com/rohithmahesh3/plane-cli/cmd/wiki"
-	cfg "github.com/rohithmahesh3/plane-cli/internal/config"
-	"github.com/rohithmahesh3/plane-cli/internal/output"
+	"github.com/ba0f3/plane-cli/cmd/auth"
+	"github.com/ba0f3/plane-cli/cmd/config"
+	"github.com/ba0f3/plane-cli/cmd/context"
+	"github.com/ba0f3/plane-cli/cmd/cycle"
+	"github.com/ba0f3/plane-cli/cmd/inject"
+	"github.com/ba0f3/plane-cli/cmd/intake"
+	"github.com/ba0f3/plane-cli/cmd/issue"
+	"github.com/ba0f3/plane-cli/cmd/label"
+	"github.com/ba0f3/plane-cli/cmd/module"
+	"github.com/ba0f3/plane-cli/cmd/project"
+	"github.com/ba0f3/plane-cli/cmd/raw"
+	"github.com/ba0f3/plane-cli/cmd/report"
+	"github.com/ba0f3/plane-cli/cmd/state"
+	issuetype "github.com/ba0f3/plane-cli/cmd/type"
+	"github.com/ba0f3/plane-cli/cmd/workspace"
+	"github.com/ba0f3/plane-cli/cmd/wiki"
+	cfg "github.com/ba0f3/plane-cli/internal/config"
+	"github.com/ba0f3/plane-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -136,7 +136,7 @@ var versionCmd = &cobra.Command{
 	Short: "Print version information",
 	Run: func(cmd *cobra.Command, args []string) {
 		// Try to get version from Go module info (works with go install)
-		// Version is set when installed via: go install github.com/rohithmahesh3/plane-cli@v1.0.1
+		// Version is set when installed via: go install github.com/ba0f3/plane-cli@v1.0.1
 		if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
 			fmt.Printf("plane-cli version %s\n", info.Main.Version)
 			return
