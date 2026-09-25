@@ -7,36 +7,6 @@ import (
 	"github.com/rohithmahesh3/plane-cli/pkg/plane"
 )
 
-type WorkspaceSummary struct {
-	ID   string `json:"id" table:"ID"`
-	Name string `json:"name" table:"NAME"`
-	Slug string `json:"slug" table:"SLUG"`
-}
-
-type AuthContext struct {
-	PrincipalType string            `json:"principal_type"`
-	ScopeLevel    string            `json:"scope_level"`
-	IsService     bool              `json:"is_service"`
-	Workspace     *WorkspaceSummary `json:"workspace"`
-	Scopes        []string          `json:"scopes"`
-}
-
-func (c *Client) GetAuthContext() (*AuthContext, error) {
-	var ctx AuthContext
-	if err := c.Get("/auth/context/", nil, &ctx); err != nil {
-		return nil, err
-	}
-	return &ctx, nil
-}
-
-func (c *Client) ListWorkspaces() ([]WorkspaceSummary, error) {
-	body, err := c.GetRaw("/workspaces/", nil)
-	if err != nil {
-		return nil, err
-	}
-	return unmarshalListResponse[WorkspaceSummary](body)
-}
-
 func (c *Client) GetWorkspace(slug string) (*WorkspaceSummary, error) {
 	workspaces, err := c.ListWorkspaces()
 	if err != nil {
