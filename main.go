@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/rohithmahesh3/plane-cli/cmd"
+	"github.com/ba0f3/plane-cli/cmd"
 )
 
 func main() {
