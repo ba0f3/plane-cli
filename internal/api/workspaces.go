@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/rohithmahesh3/plane-cli/pkg/plane"
+	"github.com/ba0f3/plane-cli/pkg/plane"
 )
 
 func (c *Client) GetWorkspace(slug string) (*WorkspaceSummary, error) {
