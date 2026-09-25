@@ -3,7 +3,7 @@ package api
 import (
 	"strings"
 
-	"github.com/rohithmahesh3/plane-cli/pkg/plane"
+	"github.com/ba0f3/plane-cli/pkg/plane"
 )
 
 // FilterWorkspaceMembers performs client-side filtering for workspace members.
