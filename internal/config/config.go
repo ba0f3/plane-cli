@@ -92,6 +92,17 @@ func initConfig(validateOutput bool) error {
 	if err := viper.Unmarshal(&Cfg); err != nil {
 		return fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+
+	// Environment variables are first-class for cron/agents and override config files.
+	if v := os.Getenv("PLANE_BASE_URL"); v != "" {
+		Cfg.APIHost = v
+	}
+	if v := os.Getenv("PLANE_WORKSPACE"); v != "" {
+		Cfg.DefaultWorkspace = v
+	}
+	if v := os.Getenv("PLANE_PROJECT"); v != "" {
+		Cfg.DefaultProject = v
+	}
 	if err := output.ValidateFormat(Cfg.OutputFormat); err != nil {
 		if validateOutput {
 			return err
@@ -165,6 +176,12 @@ func SaveConfig() error {
 }
 
 func GetAPIKey() (string, error) {
+	if v := os.Getenv("PLANE_TOKEN"); v != "" {
+		return v, nil
+	}
+	if v := os.Getenv("PLANE_API_KEY"); v != "" {
+		return v, nil
+	}
 	return keyring.Get(KeyringService, KeyringUser)
 }
 
