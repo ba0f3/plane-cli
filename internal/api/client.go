@@ -41,19 +41,29 @@ type Response struct {
 }
 
 func NewClient() (*Client, error) {
+	return newClient(true)
+}
+
+// NewClientNoWorkspace creates a client for instance-scoped discovery and reports.
+// Workspace-scoped mutations must continue to use NewClient so they cannot fan out.
+func NewClientNoWorkspace() (*Client, error) {
+	return newClient(false)
+}
+
+func newClient(requireWorkspace bool) (*Client, error) {
 	apiKey, err := config.GetAPIKey()
-	if err != nil {
-		return nil, fmt.Errorf("not authenticated. Run 'plane-cli auth login' first")
+	if err != nil || strings.TrimSpace(apiKey) == "" {
+		return nil, fmt.Errorf("not authenticated. Run 'plane-cli auth login' or set PLANE_TOKEN/PLANE_API_KEY")
 	}
 
-	workspace := config.Cfg.DefaultWorkspace
-	if workspace == "" {
-		return nil, fmt.Errorf("no default workspace set. Use --workspace flag or set default workspace")
+	workspace := strings.TrimSpace(config.Cfg.DefaultWorkspace)
+	if requireWorkspace && workspace == "" {
+		return nil, fmt.Errorf("no workspace selected. Use --workspace, PLANE_WORKSPACE, or set a default workspace")
 	}
 
-	baseURL := config.Cfg.APIHost
+	baseURL := strings.TrimRight(strings.TrimSpace(config.Cfg.APIHost), "/")
 	if baseURL == "" {
-		return nil, fmt.Errorf("no API host configured. Run 'plane-cli auth login' to configure")
+		return nil, fmt.Errorf("no API host configured. Run 'plane-cli auth login' or set PLANE_BASE_URL")
 	}
 
 	return &Client{
@@ -62,6 +72,13 @@ func NewClient() (*Client, error) {
 		APIKey:     apiKey,
 		Workspace:  workspace,
 	}, nil
+}
+
+// CloneForWorkspace returns a shallow copy pinned to one workspace.
+func (c *Client) CloneForWorkspace(workspace string) *Client {
+	clone := *c
+	clone.Workspace = strings.TrimSpace(workspace)
+	return &clone
 }
 
 func (c *Client) NewRequest(method, path string, body interface{}) (*http.Request, error) {
