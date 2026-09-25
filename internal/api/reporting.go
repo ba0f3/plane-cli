@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/rohithmahesh3/plane-cli/pkg/plane"
+	"github.com/ba0f3/plane-cli/pkg/plane"
 )
 
 // ListAllIssues walks Plane's cursor pagination and returns all work items
