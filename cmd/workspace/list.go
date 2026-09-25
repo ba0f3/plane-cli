@@ -1,9 +1,9 @@
 package workspace
 
 import (
-	"github.com/rohithmahesh3/plane-cli/internal/api"
-	"github.com/rohithmahesh3/plane-cli/internal/config"
-	"github.com/rohithmahesh3/plane-cli/internal/output"
+	"github.com/ba0f3/plane-cli/internal/api"
+	"github.com/ba0f3/plane-cli/internal/config"
+	"github.com/ba0f3/plane-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
