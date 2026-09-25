@@ -188,6 +188,12 @@ func (c *Client) ForWorkspace(workspace string) *Client {
 	return &clone
 }
 
+// CloneForWorkspace is kept for report/internal callers that need an explicit
+// workspace-scoped view of an instance-level client.
+func (c *Client) CloneForWorkspace(workspace string) *Client {
+	return c.ForWorkspace(workspace)
+}
+
 func unmarshalListResponse[T any](body []byte) ([]T, error) {
 	var wrapped struct {
 		Results json.RawMessage `json:"results"`
