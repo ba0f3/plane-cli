@@ -25,17 +25,17 @@ A powerful command-line interface for [Plane](https://plane.so) - the open-sourc
 ### From Source
 
 ```bash
-go install github.com/rohithmahesh3/plane-cli@latest
+go install github.com/ba0f3/plane-cli@latest
 ```
 
 ### Download Binary
 
-Download the latest release from the [releases page](https://github.com/rohithmahesh3/plane-cli/releases).
+Download the latest release from the [releases page](https://github.com/ba0f3/plane-cli/releases).
 
 ### Homebrew (macOS/Linux)
 
 ```bash
-brew tap rohithmahesh3/plane-cli
+brew tap ba0f3/plane-cli
 brew install plane-cli
 ```
 
