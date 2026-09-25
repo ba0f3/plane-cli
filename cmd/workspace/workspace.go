@@ -24,13 +24,6 @@ var WorkspaceCmd = &cobra.Command{
 	Long:    "Discover workspaces visible to PAT, WSAT, or IAT credentials and select a default workspace.",
 }
 
-var listCmd = &cobra.Command{
-	Use:     "list",
-	Aliases: []string{"ls"},
-	Short:   "List workspaces visible to the current credential",
-	RunE:    runList,
-}
-
 var infoCmd = &cobra.Command{
 	Use:   "info [slug]",
 	Short: "Show workspace details",
@@ -57,41 +50,9 @@ func init() {
 	membersCmd.Flags().BoolVar(&memberExact, "exact", false, "Require exact matches for --search")
 	membersCmd.Flags().IntVar(&memberLimit, "limit", 0, "Maximum number of members to show (0 = no limit)")
 
-	WorkspaceCmd.AddCommand(listCmd)
 	WorkspaceCmd.AddCommand(infoCmd)
 	WorkspaceCmd.AddCommand(switchCmd)
 	WorkspaceCmd.AddCommand(membersCmd)
-}
-
-func runList(cmd *cobra.Command, args []string) error {
-	client, err := api.NewClientNoWorkspace()
-	if err != nil {
-		return err
-	}
-	workspaces, err := client.ListWorkspaces()
-	if err != nil {
-		return fmt.Errorf("workspace discovery failed: %w", err)
-	}
-	if len(workspaces) == 0 {
-		output.Info("No workspaces visible to this credential")
-		return nil
-	}
-
-	type row struct {
-		ID      string `table:"ID" json:"id"`
-		Slug    string `table:"SLUG" json:"slug"`
-		Name    string `table:"NAME" json:"name"`
-		Default string `table:"DEFAULT" json:"default,omitempty"`
-	}
-	rows := make([]row, 0, len(workspaces))
-	for _, ws := range workspaces {
-		def := ""
-		if ws.Slug == config.Cfg.DefaultWorkspace {
-			def = "✓"
-		}
-		rows = append(rows, row{ID: ws.ID, Slug: ws.Slug, Name: ws.Name, Default: def})
-	}
-	return output.NewFormatter(config.Cfg.OutputFormat, false).Print(rows)
 }
 
 func runInfo(cmd *cobra.Command, args []string) error {
