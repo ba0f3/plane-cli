@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	contextcmd "github.com/rohithmahesh3/plane-cli/cmd/context"
-	"github.com/rohithmahesh3/plane-cli/internal/output"
+	contextcmd "github.com/ba0f3/plane-cli/cmd/context"
+	"github.com/ba0f3/plane-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
