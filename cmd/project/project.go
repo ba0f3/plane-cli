@@ -68,24 +68,10 @@ func init() {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	client, err := api.NewClient()
-	if err != nil {
-		return err
-	}
-
-	projects, err := client.ListProjects()
-	if err != nil {
-		return err
-	}
-
-	if len(projects) == 0 {
-		output.Info("No projects found")
-		return nil
-	}
-
 	formatter := output.NewFormatter(config.Cfg.OutputFormat, false)
 
 	type projectOutput struct {
+		Workspace  string `table:"WORKSPACE" json:"workspace,omitempty"`
 		ID         string `table:"ID" json:"id"`
 		Identifier string `table:"IDENTIFIER" json:"identifier"`
 		Name       string `table:"NAME" json:"name"`
@@ -93,19 +79,52 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	var outputs []projectOutput
-	for _, p := range projects {
-		isDefault := ""
-		if p.ID == config.Cfg.DefaultProject {
-			isDefault = "✓"
+	if config.Cfg.DefaultWorkspace != "" {
+		client, err := api.NewClient()
+		if err != nil {
+			return err
 		}
-		outputs = append(outputs, projectOutput{
-			ID:         p.ID,
-			Identifier: p.Identifier,
-			Name:       p.Name,
-			Default:    isDefault,
-		})
+		projects, err := client.ListProjects()
+		if err != nil {
+			return err
+		}
+		for _, p := range projects {
+			isDefault := ""
+			if p.ID == config.Cfg.DefaultProject {
+				isDefault = "✓"
+			}
+			outputs = append(outputs, projectOutput{
+				Workspace: config.Cfg.DefaultWorkspace,
+				ID: p.ID, Identifier: p.Identifier, Name: p.Name, Default: isDefault,
+			})
+		}
+	} else {
+		client, err := api.NewClientNoWorkspace()
+		if err != nil {
+			return err
+		}
+		workspaces, err := client.ListWorkspaces()
+		if err != nil {
+			return err
+		}
+		for _, ws := range workspaces {
+			scoped := client.CloneForWorkspace(ws.Slug)
+			projects, err := scoped.ListProjects()
+			if err != nil {
+				return fmt.Errorf("workspace %s: %w", ws.Slug, err)
+			}
+			for _, p := range projects {
+				outputs = append(outputs, projectOutput{
+					Workspace: ws.Slug, ID: p.ID, Identifier: p.Identifier, Name: p.Name,
+				})
+			}
+		}
 	}
 
+	if len(outputs) == 0 {
+		output.Info("No projects found")
+		return nil
+	}
 	return formatter.Print(outputs)
 }
 
