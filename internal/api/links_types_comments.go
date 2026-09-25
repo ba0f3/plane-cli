@@ -3,7 +3,7 @@ package api
 import (
 	"fmt"
 
-	"github.com/rohithmahesh3/plane-cli/pkg/plane"
+	"github.com/ba0f3/plane-cli/pkg/plane"
 )
 
 // ListLinks retrieves all links for an issue
