@@ -47,6 +47,40 @@ func (c *Client) ListIssues(projectID string, opts IssueListOptions) ([]plane.Is
 	return issues, &response.Pagination, nil
 }
 
+func (c *Client) ListAllIssues(projectID string) ([]plane.Issue, error) {
+	const pageSize = 100
+	var all []plane.Issue
+	offset := 0
+	for {
+		items, page, err := c.ListIssues(projectID, IssueListOptions{Limit: pageSize, Offset: offset})
+		if err != nil {
+			return nil, err
+		}
+		if len(items) == 0 {
+			break
+		}
+		all = append(all, items...)
+		offset += len(items)
+
+		if page != nil {
+			if page.TotalResults > 0 && offset >= page.TotalResults {
+				break
+			}
+			if !page.NextPageResults && len(items) < pageSize {
+				break
+			}
+		} else if len(items) < pageSize {
+			break
+		}
+
+		// Defensive stop if an API ignores offset and keeps returning the same page.
+		if offset > 1000000 {
+			return nil, fmt.Errorf("work-item pagination exceeded safety limit")
+		}
+	}
+	return all, nil
+}
+
 func (c *Client) GetIssue(projectID, issueID string) (*plane.Issue, error) {
 	path := fmt.Sprintf("/workspaces/%s/projects/%s/work-items/%s/", c.Workspace, projectID, issueID)
 
