@@ -1,4 +1,4 @@
-module github.com/rohithmahesh3/plane-cli
+module github.com/ba0f3/plane-cli
 
 go 1.24.0
 
