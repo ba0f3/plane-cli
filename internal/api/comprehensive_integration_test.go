@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rohithmahesh3/plane-cli/internal/config"
-	"github.com/rohithmahesh3/plane-cli/internal/integrationtest"
-	"github.com/rohithmahesh3/plane-cli/pkg/plane"
+	"github.com/ba0f3/plane-cli/internal/config"
+	"github.com/ba0f3/plane-cli/internal/integrationtest"
+	"github.com/ba0f3/plane-cli/pkg/plane"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
