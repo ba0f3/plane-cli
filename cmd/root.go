@@ -15,10 +15,12 @@ import (
 	"github.com/rohithmahesh3/plane-cli/cmd/label"
 	"github.com/rohithmahesh3/plane-cli/cmd/module"
 	"github.com/rohithmahesh3/plane-cli/cmd/project"
+	"github.com/rohithmahesh3/plane-cli/cmd/raw"
 	"github.com/rohithmahesh3/plane-cli/cmd/report"
 	"github.com/rohithmahesh3/plane-cli/cmd/state"
 	issuetype "github.com/rohithmahesh3/plane-cli/cmd/type"
 	"github.com/rohithmahesh3/plane-cli/cmd/workspace"
+	"github.com/rohithmahesh3/plane-cli/cmd/wiki"
 	cfg "github.com/rohithmahesh3/plane-cli/internal/config"
 	"github.com/rohithmahesh3/plane-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -113,6 +115,8 @@ func init() {
 	rootCmd.AddCommand(workspace.WorkspaceCmd)
 	rootCmd.AddCommand(project.ProjectCmd)
 	rootCmd.AddCommand(report.ReportCmd)
+	rootCmd.AddCommand(wiki.WikiCmd)
+	rootCmd.AddCommand(raw.RawCmd)
 	rootCmd.AddCommand(issue.IssueCmd)
 	rootCmd.AddCommand(state.StateCmd)
 	rootCmd.AddCommand(label.LabelCmd)
