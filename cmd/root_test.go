@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	cfg "github.com/rohithmahesh3/plane-cli/internal/config"
+	cfg "github.com/ba0f3/plane-cli/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
