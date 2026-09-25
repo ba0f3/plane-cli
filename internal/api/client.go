@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rohithmahesh3/plane-cli/internal/config"
+	"github.com/ba0f3/plane-cli/internal/config"
 )
 
 const (
