@@ -3,7 +3,7 @@ package api
 import (
 	"fmt"
 
-	"github.com/rohithmahesh3/plane-cli/pkg/plane"
+	"github.com/ba0f3/plane-cli/pkg/plane"
 )
 
 // ListStates retrieves all states for a project
