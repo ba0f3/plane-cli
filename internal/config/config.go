@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rohithmahesh3/plane-cli/internal/output"
+	"github.com/ba0f3/plane-cli/internal/output"
 	"github.com/spf13/viper"
 	"github.com/zalando/go-keyring"
 	"gopkg.in/yaml.v3"
