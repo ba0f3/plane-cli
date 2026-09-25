@@ -3,7 +3,7 @@ package api
 import (
 	"fmt"
 
-	"github.com/rohithmahesh3/plane-cli/pkg/plane"
+	"github.com/ba0f3/plane-cli/pkg/plane"
 )
 
 // ListWorklogs retrieves all worklogs for an issue
