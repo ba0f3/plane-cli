@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rohithmahesh3/plane-cli/internal/api"
-	"github.com/rohithmahesh3/plane-cli/pkg/plane"
+	"github.com/ba0f3/plane-cli/internal/api"
+	"github.com/ba0f3/plane-cli/pkg/plane"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"
