@@ -64,7 +64,6 @@ func init() {
 	ProjectCmd.AddCommand(infoCmd)
 	ProjectCmd.AddCommand(deleteCmd)
 	ProjectCmd.AddCommand(membersCmd)
-
 }
 
 func runList(cmd *cobra.Command, args []string) error {
