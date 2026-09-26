@@ -54,21 +54,21 @@ type Assignee struct {
 }
 
 type Item struct {
-	Workspace  string     `json:"workspace"`
-	Project    string     `json:"project"`
-	ProjectID  string     `json:"project_id"`
-	Issue      string     `json:"issue"`
-	IssueID    string     `json:"issue_id"`
-	Title      string     `json:"title"`
-	State      string     `json:"state"`
-	StateGroup string     `json:"state_group,omitempty"`
-	Priority   string     `json:"priority,omitempty"`
-	Assignees  []Assignee `json:"assignees"`
-	Labels     []string   `json:"labels,omitempty"`
-	StartDate  string     `json:"start_date,omitempty"`
-	TargetDate string     `json:"target_date,omitempty"`
-	UpdatedAt  string     `json:"updated_at"`
-	CompletedAt string    `json:"completed_at,omitempty"`
+	Workspace   string     `json:"workspace"`
+	Project     string     `json:"project"`
+	ProjectID   string     `json:"project_id"`
+	Issue       string     `json:"issue"`
+	IssueID     string     `json:"issue_id"`
+	Title       string     `json:"title"`
+	State       string     `json:"state"`
+	StateGroup  string     `json:"state_group,omitempty"`
+	Priority    string     `json:"priority,omitempty"`
+	Assignees   []Assignee `json:"assignees"`
+	Labels      []string   `json:"labels,omitempty"`
+	StartDate   string     `json:"start_date,omitempty"`
+	TargetDate  string     `json:"target_date,omitempty"`
+	UpdatedAt   string     `json:"updated_at"`
+	CompletedAt string     `json:"completed_at,omitempty"`
 }
 
 type Sections struct {
@@ -137,13 +137,14 @@ func Build(records []Record, opts Options) (Report, error) {
 		report.Summary.Matched++
 		item := toItem(r)
 		group := normalizedStateGroup(r.Issue)
-		done := isDoneGroup(group)
 
-		if done {
-			completedAt := completionTime(r.Issue)
-			if !completedAt.IsZero() && !completedAt.Before(opts.Since) && !completedAt.After(opts.Now) {
-				report.Summary.CompletedRecent++
-				report.Sections.Completed = append(report.Sections.Completed, item)
+		if isClosedGroup(group) {
+			if group == "completed" {
+				completedAt := completionTime(r.Issue)
+				if !completedAt.IsZero() && !completedAt.Before(opts.Since) && !completedAt.After(opts.Now) {
+					report.Summary.CompletedRecent++
+					report.Sections.Completed = append(report.Sections.Completed, item)
+				}
 			}
 			continue
 		}
@@ -234,7 +235,7 @@ func stateName(issue plane.Issue) string {
 	return issue.State.ID
 }
 
-func isDoneGroup(group string) bool {
+func isClosedGroup(group string) bool {
 	return group == "completed" || group == "cancelled" || group == "canceled"
 }
 
@@ -295,20 +296,20 @@ func toItem(r Record) Item {
 		completedAt = r.Issue.CompletedAt.Format(time.RFC3339)
 	}
 	return Item{
-		Workspace:  r.Workspace,
-		Project:    r.Project.Identifier,
-		ProjectID:  r.Project.ID,
-		Issue:      fmt.Sprintf("%s-%d", r.Project.Identifier, r.Issue.SequenceID),
-		IssueID:    r.Issue.ID,
-		Title:      r.Issue.Name,
-		State:      stateName(r.Issue),
-		StateGroup: normalizedStateGroup(r.Issue),
-		Priority:   r.Issue.Priority,
-		Assignees:  assignees,
-		Labels:     labels,
-		StartDate:  r.Issue.StartDate,
-		TargetDate: r.Issue.TargetDate,
-		UpdatedAt:  r.Issue.UpdatedAt.Format(time.RFC3339),
+		Workspace:   r.Workspace,
+		Project:     r.Project.Identifier,
+		ProjectID:   r.Project.ID,
+		Issue:       fmt.Sprintf("%s-%d", r.Project.Identifier, r.Issue.SequenceID),
+		IssueID:     r.Issue.ID,
+		Title:       r.Issue.Name,
+		State:       stateName(r.Issue),
+		StateGroup:  normalizedStateGroup(r.Issue),
+		Priority:    r.Issue.Priority,
+		Assignees:   assignees,
+		Labels:      labels,
+		StartDate:   r.Issue.StartDate,
+		TargetDate:  r.Issue.TargetDate,
+		UpdatedAt:   r.Issue.UpdatedAt.Format(time.RFC3339),
 		CompletedAt: completedAt,
 	}
 }
