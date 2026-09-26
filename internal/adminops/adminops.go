@@ -140,11 +140,11 @@ func Audit(snapshots []WorkspaceSnapshot) AuditResult {
 			}
 			if member.ID == "" && member.Email == "" {
 				appendFinding(&result, Finding{
-					Severity: "warning",
-					Code: "member_missing_identity",
+					Severity:  "warning",
+					Code:      "member_missing_identity",
 					Workspace: workspace.Workspace,
-					Subject: userName(member),
-					Message: "workspace member has neither id nor email",
+					Subject:   userName(member),
+					Message:   "workspace member has neither id nor email",
 				})
 			}
 		}
@@ -173,12 +173,12 @@ func Audit(snapshots []WorkspaceSnapshot) AuditResult {
 				}
 				if _, ok := workspaceMembers[key]; !ok {
 					appendFinding(&result, Finding{
-						Severity: "warning",
-						Code: "project_member_not_in_workspace",
+						Severity:  "warning",
+						Code:      "project_member_not_in_workspace",
 						Workspace: workspace.Workspace,
-						Project: projectName,
-						Subject: identityLabel(member),
-						Message: "project member is not present in the visible workspace member list",
+						Project:   projectName,
+						Subject:   identityLabel(member),
+						Message:   "project member is not present in the visible workspace member list",
 					})
 				}
 			}
