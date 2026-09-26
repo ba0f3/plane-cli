@@ -9,6 +9,7 @@ import (
 	"github.com/ba0f3/plane-cli/cmd/config"
 	"github.com/ba0f3/plane-cli/cmd/context"
 	"github.com/ba0f3/plane-cli/cmd/cycle"
+	"github.com/ba0f3/plane-cli/cmd/digest"
 	"github.com/ba0f3/plane-cli/cmd/inject"
 	"github.com/ba0f3/plane-cli/cmd/intake"
 	"github.com/ba0f3/plane-cli/cmd/issue"
@@ -115,6 +116,7 @@ func init() {
 	rootCmd.AddCommand(workspace.WorkspaceCmd)
 	rootCmd.AddCommand(project.ProjectCmd)
 	rootCmd.AddCommand(report.ReportCmd)
+	rootCmd.AddCommand(digest.DigestCmd)
 	rootCmd.AddCommand(wiki.WikiCmd)
 	rootCmd.AddCommand(raw.RawCmd)
 	rootCmd.AddCommand(issue.IssueCmd)
@@ -167,7 +169,7 @@ Zsh:
 
 Fish:
   $ source <(plane-cli completion fish)
-  # To load completions for each session, execute once:
+  # To load completions for every new session, run:
   $ plane-cli completion fish > ~/.config/fish/completions/plane-cli.fish
 
 PowerShell:

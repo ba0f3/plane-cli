@@ -1,10 +1,21 @@
 # Plane CLI
 
-Go CLI for Plane, optimized for both interactive use and automation/agents.
+Go CLI for Plane, optimized for interactive use, cron jobs, and AI agents.
 
-This fork adds instance-wide discovery and reporting for the service-token APIs implemented in [`r2d-ai/plane`](https://github.com/r2d-ai/plane), while retaining the upstream CLI features for normal workspace/project operations.
+This fork adds instance-wide discovery, reporting, semantic digests, and Wiki support for the service-token APIs implemented in [`r2d-ai/plane`](https://github.com/r2d-ai/plane), while retaining the upstream CLI features for normal workspace/project operations.
 
-## v0.1.0 highlights
+## Highlights
+
+### v0.2
+
+- Semantic digests for users, projects, and workspaces
+- Automation-stable digest schema with `schema_version`
+- Semantic sections: overdue, due today, blocked, stale, recently completed, unassigned
+- Timezone-aware due-today evaluation
+- Configurable completion lookback and stale threshold
+- Per-section output limits for agent/cron token control
+
+### v0.1
 
 - PAT, workspace access token (WSAT), and instance access token (IAT) authentication
 - Instance-wide workspace/project discovery with IAT
@@ -27,41 +38,30 @@ This fork adds instance-wide discovery and reporting for the service-token APIs 
 
 ## Installation
 
-### Go install
-
 ```bash
 go install github.com/ba0f3/plane-cli@latest
 ```
 
-### Release binaries
-
-Download Linux, macOS, or Windows binaries from GitHub Releases:
+Or download a Linux, macOS, or Windows archive from:
 
 https://github.com/ba0f3/plane-cli/releases
 
 ## Authentication
 
-Interactive login:
-
 ```bash
 plane-cli auth login
-```
-
-Service-token examples:
-
-```bash
-# WSAT: workspace is auto-discovered from /api/v1/auth/context/
-plane-cli auth login --token "$PLANE_API_KEY" --api-host https://work.example.com
-
-# IAT: intentionally leaves the default workspace empty
-plane-cli auth login --token "$PLANE_API_KEY" --api-host https://work.example.com
-```
-
-Inspect the authenticated principal and token scope:
-
-```bash
 plane-cli auth context
 ```
+
+Service-token example:
+
+```bash
+plane-cli auth login \
+  --token "$PLANE_API_KEY" \
+  --api-host https://work.example.com
+```
+
+WSAT automatically resolves its bound workspace from `/api/v1/auth/context/`. IAT intentionally keeps the default workspace empty unless one is explicitly configured.
 
 For upstream Plane instances without the service-token discovery endpoints, login falls back to PAT behavior and requires a workspace.
 
@@ -101,11 +101,101 @@ plane-cli project list
 
 `project list` scans accessible workspaces. Workspace-bound write commands still require an explicit/default workspace and do not fan out automatically.
 
+## Semantic digests
+
+`digest` produces a semantic snapshot intended for cron jobs, email renderers, goclaw, and other agents. It is different from `report activity`: activity is a raw recent-change feed, while digest classifies current work into actionable sections.
+
+### User digest
+
+Scan work assigned to one user. With an IAT and no default workspace this scans all accessible workspaces.
+
+```bash
+plane-cli digest user alice@example.com
+plane-cli digest user USER_UUID --since 7d
+plane-cli digest user "Alice Nguyen" --stale-days 5
+```
+
+User selectors match assignee UUID, email, display name, or full name case-insensitively.
+
+### Project digest
+
+```bash
+plane-cli digest project GAME
+plane-cli digest project PROJECT_UUID
+plane-cli --workspace engineering digest project GAME
+```
+
+The selector may be project UUID, identifier, or name. If omitted, the configured `PLANE_PROJECT`/default project is used.
+
+### Workspace digest
+
+```bash
+plane-cli digest workspace engineering
+plane-cli --workspace engineering digest workspace
+```
+
+The workspace slug may be omitted when a default workspace is configured.
+
+### Digest flags
+
+```text
+--since 24h                  completed-item lookback
+--stale-days 7               active item becomes stale after N days without updates
+--limit 100                  maximum rows per semantic section; 0 = unlimited
+--timezone Asia/Ho_Chi_Minh  timezone used for due-today classification
+```
+
+`--since` accepts RFC3339, `YYYY-MM-DD`, Go durations such as `24h`, and day shorthand such as `7d`.
+
+Semantic sections:
+
+- `overdue`: active item with target date before today
+- `due_today`: active item due today in the selected timezone
+- `blocked`: active item whose state or label is `block`, `blocked`, or `blocker`
+- `stale`: active item not updated for at least `--stale-days`
+- `completed`: state group `completed` within `--since`; cancelled work is excluded
+- `unassigned`: active item with no assignee
+
+Sections are intentionally independent and may overlap. For example, one work item may be both blocked and overdue. Summary counters reflect all matches even when section arrays are truncated by `--limit`.
+
+Example JSON shape:
+
+```json
+{
+  "schema_version": "1",
+  "generated_at": "2026-09-26T09:00:00+07:00",
+  "scope": {
+    "type": "workspace",
+    "selector": "engineering"
+  },
+  "window": {
+    "completed_since": "2026-09-25T09:00:00+07:00",
+    "stale_days": 7
+  },
+  "summary": {
+    "matched": 42,
+    "active": 31,
+    "overdue": 4,
+    "due_today": 3,
+    "blocked": 2,
+    "stale": 6,
+    "completed_recent": 11,
+    "unassigned": 1
+  },
+  "sections": {
+    "overdue": [],
+    "due_today": [],
+    "blocked": [],
+    "stale": [],
+    "completed": [],
+    "unassigned": []
+  }
+}
+```
+
 ## Reports
 
 ### Summary
-
-Workspace/project work-item overview:
 
 ```bash
 plane-cli report summary
@@ -117,8 +207,6 @@ Includes item count, active/done counts, completion percentage, overdue, unassig
 
 ### Workload
 
-Assignee workload distribution:
-
 ```bash
 plane-cli report workload
 plane-cli report workload --metric points
@@ -126,20 +214,13 @@ plane-cli report workload --group-by workspace-assignee
 plane-cli report workload --group-by project-assignee --since 30d
 ```
 
-Supported metrics:
+Metrics: `count`, `points`.
 
-- `count`
-- `points`
-
-Supported grouping:
-
-- `assignee`
-- `workspace-assignee`
-- `project-assignee`
+Grouping: `assignee`, `workspace-assignee`, `project-assignee`.
 
 ### Activity
 
-Recent work-item activity feed for scripts and agents:
+Raw recent work-item change feed:
 
 ```bash
 plane-cli report activity
@@ -148,18 +229,7 @@ plane-cli report activity --since 2026-09-01 --until 2026-09-26
 plane-cli report activity --project GAME --limit 100
 ```
 
-Default window is the last 24 hours. Rows are sorted by `updated_at` descending.
-
-`report digest` is retained as an alias for backward compatibility, but `report activity` is the canonical command.
-
-Common report time filters accept:
-
-- RFC3339
-- `YYYY-MM-DD`
-- Go durations such as `24h`
-- day shorthand such as `7d`
-
-Use `--date-field updated|created` to select the timestamp used for filtering.
+Default window is the last 24 hours. Rows are sorted by `updated_at` descending. `report digest` remains an alias for backward compatibility; `report activity` is canonical.
 
 ## Wiki
 
@@ -176,7 +246,7 @@ plane-cli wiki lock PAGE_ID
 plane-cli wiki unlock PAGE_ID
 ```
 
-Wiki commands are workspace-scoped. Service-token writes require the appropriate `wiki.pages:write` scope on the Plane server.
+Wiki commands are workspace-scoped. Service-token writes require the `wiki.pages:write` scope on the Plane server.
 
 ## Raw API
 
@@ -210,7 +280,6 @@ plane-cli issue search "login"
 
 # Cycles / modules
 plane-cli cycle list
-plane-cli cycle create --name "Sprint 1" --start-date 2026-09-01 --end-date 2026-09-14
 plane-cli module list
 
 # Collaboration
@@ -228,7 +297,7 @@ plane-cli intake list
 plane-cli type list
 ```
 
-Run `plane-cli <command> --help` for the complete command-specific options.
+Run `plane-cli <command> --help` for command-specific options.
 
 ## Output
 
@@ -236,23 +305,16 @@ Supported structured formats are JSON and YAML:
 
 ```bash
 plane-cli project list --output json
-plane-cli report summary --output yaml
+plane-cli digest workspace engineering --output yaml
 ```
 
 Table output from the original upstream CLI is not supported in this fork.
 
 ## Agent support
 
-Generate CLI command context:
-
 ```bash
 plane-cli context
 plane-cli context --all
-```
-
-Inject the generated context into supported agent files:
-
-```bash
 plane-cli inject
 plane-cli inject --dry-run
 ```
