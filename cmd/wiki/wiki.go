@@ -8,7 +8,6 @@ import (
 
 	"github.com/ba0f3/plane-cli/internal/api"
 	"github.com/ba0f3/plane-cli/internal/config"
-	md "github.com/ba0f3/plane-cli/internal/markdown"
 	"github.com/ba0f3/plane-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -35,8 +34,8 @@ var WikiCmd = &cobra.Command{
 func init() {
 	list := &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List Wiki page summaries", RunE: runList}
 	show := &cobra.Command{Use: "show <page-id>", Aliases: []string{"get", "view"}, Short: "Show one Wiki page with full content", Args: cobra.ExactArgs(1), RunE: runShow}
-	create := &cobra.Command{Use: "create", Short: "Create a Wiki page from Markdown or raw HTML", RunE: runCreate}
-	update := &cobra.Command{Use: "update <page-id>", Short: "Update a Wiki page from Markdown or raw HTML", Args: cobra.ExactArgs(1), RunE: runUpdate}
+	create := &cobra.Command{Use: "create", Short: "Create a Wiki page from native Markdown or raw HTML", RunE: runCreate}
+	update := &cobra.Command{Use: "update <page-id>", Short: "Update a Wiki page from native Markdown or raw HTML", Args: cobra.ExactArgs(1), RunE: runUpdate}
 
 	list.Flags().BoolVar(&archived, "archived", false, "List archived pages")
 	list.Flags().StringVar(&updatedAfter, "updated-after", "", "Only pages updated after ISO-8601 timestamp")
@@ -44,8 +43,8 @@ func init() {
 
 	for _, c := range []*cobra.Command{create, update} {
 		c.Flags().StringVar(&pageName, "name", "", "Page name")
-		c.Flags().StringVar(&pageContent, "content", "", "Page content in Markdown")
-		c.Flags().StringVar(&pageFile, "file", "", "Read Markdown content from file; use - for stdin")
+		c.Flags().StringVar(&pageContent, "content", "", "Page content in Markdown; sent to Plane without client-side rendering")
+		c.Flags().StringVar(&pageFile, "file", "", "Read Markdown directly from file; use - for stdin")
 		c.Flags().StringVar(&pageHTML, "html", "", "Raw HTML content (compatibility/escape hatch)")
 		c.Flags().StringVar(&pageParent, "parent", "", "Parent page UUID")
 		c.Flags().StringVar(&pageColor, "color", "", "Page color")
@@ -118,9 +117,9 @@ func summarizeWikiPages(pages []api.WikiPage) []api.WikiPage {
 
 func isWikiContentField(key string) bool {
 	switch strings.ToLower(strings.TrimSpace(key)) {
-	case "description", "description_html", "description_json", "description_binary",
-		"content", "content_html", "content_json", "content_binary",
-		"body", "body_html", "body_json":
+	case "description", "description_markdown", "description_html", "description_json", "description_binary",
+		"content", "content_markdown", "content_html", "content_json", "content_binary",
+		"body", "body_markdown", "body_html", "body_json":
 		return true
 	default:
 		return false
@@ -139,12 +138,12 @@ func writePayload(cmd *cobra.Command, requireName bool) (map[string]interface{},
 		payload["name"] = pageName
 	}
 
-	body, bodySet, err := resolvePageBody(cmd)
+	bodyField, body, bodySet, err := resolvePageBody(cmd)
 	if err != nil {
 		return nil, err
 	}
 	if bodySet {
-		payload["description_html"] = body
+		payload[bodyField] = body
 	}
 
 	if cmd.Flags().Changed("parent") {
@@ -159,8 +158,8 @@ func writePayload(cmd *cobra.Command, requireName bool) (map[string]interface{},
 	return payload, nil
 }
 
-func resolvePageBody(cmd *cobra.Command) (string, bool, error) {
-	return pageBodyHTML(
+func resolvePageBody(cmd *cobra.Command) (string, string, bool, error) {
+	return pageBody(
 		pageContent, cmd.Flags().Changed("content"),
 		pageFile, cmd.Flags().Changed("file"),
 		pageHTML, cmd.Flags().Changed("html"),
@@ -168,7 +167,7 @@ func resolvePageBody(cmd *cobra.Command) (string, bool, error) {
 	)
 }
 
-func pageBodyHTML(content string, contentSet bool, filePath string, fileSet bool, rawHTML string, htmlSet bool, stdin io.Reader) (string, bool, error) {
+func pageBody(content string, contentSet bool, filePath string, fileSet bool, rawHTML string, htmlSet bool, stdin io.Reader) (string, string, bool, error) {
 	sources := 0
 	for _, set := range []bool{contentSet, fileSet, htmlSet} {
 		if set {
@@ -176,20 +175,20 @@ func pageBodyHTML(content string, contentSet bool, filePath string, fileSet bool
 		}
 	}
 	if sources == 0 {
-		return "", false, nil
+		return "", "", false, nil
 	}
 	if sources > 1 {
-		return "", false, fmt.Errorf("use only one of --content, --file, or --html")
+		return "", "", false, fmt.Errorf("use only one of --content, --file, or --html")
 	}
 
 	if htmlSet {
-		return rawHTML, true, nil
+		return "description_html", rawHTML, true, nil
 	}
 
 	markdownContent := content
 	if fileSet {
 		if strings.TrimSpace(filePath) == "" {
-			return "", false, fmt.Errorf("--file requires a path or - for stdin")
+			return "", "", false, fmt.Errorf("--file requires a path or - for stdin")
 		}
 		var data []byte
 		var err error
@@ -199,12 +198,12 @@ func pageBodyHTML(content string, contentSet bool, filePath string, fileSet bool
 			data, err = os.ReadFile(filePath)
 		}
 		if err != nil {
-			return "", false, fmt.Errorf("read wiki content %q: %w", filePath, err)
+			return "", "", false, fmt.Errorf("read wiki content %q: %w", filePath, err)
 		}
 		markdownContent = string(data)
 	}
 
-	return md.RenderHTML(markdownContent), true, nil
+	return "description_markdown", markdownContent, true, nil
 }
 
 func runCreate(cmd *cobra.Command, args []string) error {
