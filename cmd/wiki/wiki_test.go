@@ -1,6 +1,7 @@
 package wiki
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -39,7 +40,7 @@ func TestPageBodyHTMLMarkdown(t *testing.T) {
 
 func TestPageBodyHTMLFromFile(t *testing.T) {
 	path := t.TempDir() + "/runbook.md"
-	require.NoError(t, osWriteFile(path, []byte("## Deploy\n\n- build\n- ship")))
+	require.NoError(t, os.WriteFile(path, []byte("## Deploy\n\n- build\n- ship"), 0o600))
 
 	html, set, err := pageBodyHTML("", false, path, true, "", false, strings.NewReader(""))
 	require.NoError(t, err)
@@ -73,8 +74,4 @@ func TestPageBodyHTMLNoSource(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, set)
 	assert.Empty(t, html)
-}
-
-func osWriteFile(path string, data []byte) error {
-	return os.WriteFile(path, data, 0o600)
 }
