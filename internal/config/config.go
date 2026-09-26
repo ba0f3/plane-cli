@@ -94,7 +94,10 @@ func initConfig(validateOutput bool) error {
 	}
 
 	// Environment variables are first-class for cron/agents and override config files.
-	if v := os.Getenv("PLANE_BASE_URL"); v != "" {
+	// PLANE_API_HOST is the documented name; PLANE_BASE_URL remains a compatibility alias.
+	if v := os.Getenv("PLANE_API_HOST"); v != "" {
+		Cfg.APIHost = v
+	} else if v := os.Getenv("PLANE_BASE_URL"); v != "" {
 		Cfg.APIHost = v
 	}
 	if v := os.Getenv("PLANE_WORKSPACE"); v != "" {
