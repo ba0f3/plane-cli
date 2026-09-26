@@ -5,6 +5,7 @@ import (
 	"os"
 	"runtime/debug"
 
+	"github.com/ba0f3/plane-cli/cmd/admin"
 	"github.com/ba0f3/plane-cli/cmd/auth"
 	"github.com/ba0f3/plane-cli/cmd/config"
 	"github.com/ba0f3/plane-cli/cmd/context"
@@ -113,6 +114,7 @@ func init() {
 	// Add subcommands
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(auth.AuthCmd)
+	rootCmd.AddCommand(admin.AdminCmd)
 	rootCmd.AddCommand(workspace.WorkspaceCmd)
 	rootCmd.AddCommand(project.ProjectCmd)
 	rootCmd.AddCommand(report.ReportCmd)
