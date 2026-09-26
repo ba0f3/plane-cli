@@ -21,7 +21,7 @@ var (
 	reportDateField string
 	workloadMetric  string
 	workloadGroupBy string
-	digestLimit     int
+	activityLimit   int
 )
 
 var ReportCmd = &cobra.Command{
@@ -38,9 +38,14 @@ type record struct {
 func init() {
 	summary := &cobra.Command{Use: "summary", Short: "Workspace/project work-item summary", RunE: runSummary}
 	workload := &cobra.Command{Use: "workload", Short: "Assignee workload and share", RunE: runWorkload}
-	digest := &cobra.Command{Use: "digest", Short: "Recent work-item digest for cron/agents", RunE: runDigest}
+	activity := &cobra.Command{
+		Use:     "activity",
+		Aliases: []string{"digest"},
+		Short:   "Recent work-item activity for cron/agents",
+		RunE:    runActivity,
+	}
 
-	for _, cmd := range []*cobra.Command{summary, workload, digest} {
+	for _, cmd := range []*cobra.Command{summary, workload, activity} {
 		cmd.Flags().StringVarP(&reportProject, "project", "p", "", "Project ID, identifier, or name")
 		cmd.Flags().StringVar(&reportSince, "since", "", "Start time: RFC3339, YYYY-MM-DD, Go duration (24h), or Nd (7d)")
 		cmd.Flags().StringVar(&reportUntil, "until", "", "End time: RFC3339 or YYYY-MM-DD")
@@ -48,9 +53,9 @@ func init() {
 	}
 	workload.Flags().StringVar(&workloadMetric, "metric", "count", "Workload metric: count or points")
 	workload.Flags().StringVar(&workloadGroupBy, "group-by", "assignee", "Group by: assignee, workspace-assignee, project-assignee")
-	digest.Flags().IntVarP(&digestLimit, "limit", "l", 500, "Maximum digest rows")
+	activity.Flags().IntVarP(&activityLimit, "limit", "l", 500, "Maximum activity rows")
 
-	ReportCmd.AddCommand(summary, workload, digest)
+	ReportCmd.AddCommand(summary, workload, activity)
 }
 
 func collect() ([]record, error) {
@@ -331,12 +336,14 @@ func runWorkload(cmd *cobra.Command, args []string) error {
 		})
 	}
 	sort.Slice(rows, func(i, j int) bool {
-		return strings.TrimSuffix(rows[i].Share, "%") > strings.TrimSuffix(rows[j].Share, "%")
+		left, _ := strconv.ParseFloat(strings.TrimSuffix(rows[i].Share, "%"), 64)
+		right, _ := strconv.ParseFloat(strings.TrimSuffix(rows[j].Share, "%"), 64)
+		return left > right
 	})
 	return output.NewFormatter(config.Cfg.OutputFormat, false).Print(rows)
 }
 
-func runDigest(cmd *cobra.Command, args []string) error {
+func runActivity(cmd *cobra.Command, args []string) error {
 	if reportSince == "" {
 		reportSince = "24h"
 	}
@@ -347,8 +354,8 @@ func runDigest(cmd *cobra.Command, args []string) error {
 	sort.Slice(records, func(i, j int) bool {
 		return records[i].Issue.UpdatedAt.After(records[j].Issue.UpdatedAt)
 	})
-	if digestLimit > 0 && len(records) > digestLimit {
-		records = records[:digestLimit]
+	if activityLimit > 0 && len(records) > activityLimit {
+		records = records[:activityLimit]
 	}
 	type row struct {
 		Workspace string   `table:"WORKSPACE" json:"workspace"`
