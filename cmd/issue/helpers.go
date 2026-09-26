@@ -57,5 +57,5 @@ func looksLikeUUID(s string) bool {
 }
 
 func renderDescriptionHTML(input string) string {
-	return md.RenderHTML(input)
+	return md.RenderHTMLCompat(input)
 }
