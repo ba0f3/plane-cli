@@ -2,26 +2,24 @@ package markdown
 
 import (
 	"bytes"
+	stdhtml "html"
 	"regexp"
 	"strings"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/renderer/html"
+	goldmarkhtml "github.com/yuin/goldmark/renderer/html"
 )
 
 var codeBlockPattern = regexp.MustCompile(`(?s)<pre><code([^>]*)>(.*?)</code></pre>`)
 
-// RenderHTML converts Markdown text to HTML.
-// If the input already appears to be HTML (starts with "<"), it is returned unchanged.
+// RenderHTML converts Markdown text to HTML. Raw HTML is not treated as an
+// escape hatch; callers that intentionally accept raw HTML should bypass this
+// function and send that HTML explicitly.
 func RenderHTML(input string) string {
-	normalized := strings.TrimSpace(strings.ReplaceAll(input, "\r\n", "\n"))
+	normalized := normalize(input)
 	if normalized == "" {
 		return ""
-	}
-
-	if strings.HasPrefix(normalized, "<") {
-		return normalized
 	}
 
 	md := goldmark.New(
@@ -32,17 +30,34 @@ func RenderHTML(input string) string {
 			extension.TaskList,
 		),
 		goldmark.WithRendererOptions(
-			html.WithHardWraps(),
-			html.WithXHTML(),
+			goldmarkhtml.WithHardWraps(),
+			goldmarkhtml.WithXHTML(),
 		),
 	)
 
 	var buf bytes.Buffer
 	if err := md.Convert([]byte(normalized), &buf); err != nil {
-		return "<p>" + normalized + "</p>"
+		return "<p>" + stdhtml.EscapeString(normalized) + "</p>"
 	}
 
 	return normalizeCodeBlockBlankLines(buf.String())
+}
+
+// RenderHTMLCompat preserves the historical issue/comment behavior where an
+// input beginning with '<' is assumed to already be HTML.
+func RenderHTMLCompat(input string) string {
+	normalized := normalize(input)
+	if normalized == "" {
+		return ""
+	}
+	if strings.HasPrefix(normalized, "<") {
+		return normalized
+	}
+	return RenderHTML(normalized)
+}
+
+func normalize(input string) string {
+	return strings.TrimSpace(strings.ReplaceAll(input, "\r\n", "\n"))
 }
 
 func normalizeCodeBlockBlankLines(rendered string) string {
