@@ -10,7 +10,7 @@ import (
 
 func TestBuildMemberInventoryDeduplicatesAcrossWorkspaces(t *testing.T) {
 	input := map[string][]plane.User{
-		"design": {{ID: "u1", Email: "alice@example.com", DisplayName: "Alice", Role: 15}},
+		"design":      {{ID: "u1", Email: "alice@example.com", DisplayName: "Alice", Role: 15}},
 		"engineering": {{ID: "u1", Email: "alice@example.com", DisplayName: "Alice", Role: 20}, {ID: "u2", Email: "bob@example.com", DisplayName: "Bob"}},
 	}
 
