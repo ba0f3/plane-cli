@@ -94,7 +94,7 @@ func runList(cmd *cobra.Command, args []string) error {
 			}
 			outputs = append(outputs, projectOutput{
 				Workspace: config.Cfg.DefaultWorkspace,
-				ID: p.ID, Identifier: p.Identifier, Name: p.Name, Default: isDefault,
+				ID:        p.ID, Identifier: p.Identifier, Name: p.Name, Default: isDefault,
 			})
 		}
 	} else {
