@@ -56,8 +56,8 @@ Get started:
   plane-cli issue list                    # List issues in current project`,
 	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Skip config initialization for certain commands
-		if cmd.Name() == "login" || cmd.Name() == "version" || cmd.Name() == "completion" || cmd.Name() == "init" {
+		// Skip config initialization for commands that must work before Plane is configured.
+		if cmd.Name() == "login" || cmd.Name() == "version" || cmd.Name() == "completion" || cmd.Name() == "init" || cmd.Name() == "skills" {
 			return nil
 		}
 
@@ -131,6 +131,7 @@ func init() {
 	rootCmd.AddCommand(context.ContextCmd)
 	rootCmd.AddCommand(issuetype.TypeCmd)
 	rootCmd.AddCommand(inject.InjectCmd)
+	rootCmd.AddCommand(skillsCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(completionCmd)
 }
