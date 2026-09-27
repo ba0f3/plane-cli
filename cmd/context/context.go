@@ -20,7 +20,11 @@ var ContextCmd = &cobra.Command{
 Use flags to include additional modules beyond the default set.
 
 Default modules: issue, project, module, state, label, type
-Optional modules: --cycle, --workspace, --intake, --all`,
+Optional modules: --cycle, --workspace, --intake
+--all also includes report, digest, wiki, admin, raw, and skills.
+
+For the authoritative self-describing agent reference generated from the running
+binary, prefer: plane-cli skills`,
 	RunE: runContext,
 }
 
@@ -50,6 +54,9 @@ func runContext(cmd *cobra.Command, args []string) error {
 	}
 	if includeAll || includeIntake {
 		output += getIntakeCommands()
+	}
+	if includeAll {
+		output += getExtendedCommands()
 	}
 
 	fmt.Print(output)
@@ -239,9 +246,48 @@ plane-cli project members [--output json] [<id:uuid>]
 func getWorkspaceCommands() string {
 	return `## Workspace (aliases: ws)
 ` + "```" + `
+plane-cli workspace list [--output json]
 plane-cli workspace info [<slug:text>]
 plane-cli workspace switch [<slug:text>]
 plane-cli workspace members [--output json] [--search <text>] [--exact] [--limit <count:int>]
+` + "```" + `
+
+`
+}
+
+func getExtendedCommands() string {
+	return `## Reports, Digests, Wiki, Admin, Raw API, and Agent Skills
+` + "```" + `
+# Cross-workspace reporting
+plane-cli report summary [--project <id|identifier|name>] [--since <time>] [--until <time>] [--date-field updated|created]
+plane-cli report workload [--metric count|points] [--group-by assignee|workspace-assignee|project-assignee]
+plane-cli report activity [--limit <count>] [--since <time>]
+
+# Semantic digests
+plane-cli digest user <id|email|name> [--since 24h] [--stale-days 7] [--limit 100] [--timezone Local]
+plane-cli digest project [id|identifier|name] [--since 24h] [--stale-days 7] [--limit 100] [--timezone Local]
+plane-cli digest workspace [slug] [--since 24h] [--stale-days 7] [--limit 100] [--timezone Local]
+
+# Wiki: list is metadata-only; show returns page content
+plane-cli wiki list [--archived] [--updated-after <RFC3339>]
+plane-cli wiki show <page-id>
+plane-cli wiki create --name <text> [--file <markdown-file> | --markdown <markdown> | --html <html>]
+plane-cli wiki update <page-id> [--name <text>] [--file <markdown-file> | --markdown <markdown> | --html <html>]
+plane-cli wiki archive|unarchive|lock|unlock <page-id>
+
+# Administration and safe bulk operations
+plane-cli admin token
+plane-cli admin members [workspace] [--search <text>]
+plane-cli admin health [workspace]
+plane-cli admin audit [workspace]
+plane-cli admin bulk project-delete <workspace> <project-selector>... [--apply]
+
+# Raw API escape hatch; PATH is relative to /api/v1
+plane-cli raw <METHOD> <PATH> [-d <json>]
+
+# Authoritative self-describing skill for the installed binary
+plane-cli skills
+plane-cli skills > SKILL.md
 ` + "```" + `
 
 `
@@ -259,3 +305,4 @@ func GetTypeCommands() string      { return getTypeCommands() }
 func GetCycleCommands() string     { return getCycleCommands() }
 func GetWorkspaceCommands() string { return getWorkspaceCommands() }
 func GetIntakeCommands() string    { return getIntakeCommands() }
+func GetExtendedCommands() string  { return getExtendedCommands() }
