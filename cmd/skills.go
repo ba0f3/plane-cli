@@ -113,10 +113,21 @@ func writeCommandTree(b *strings.Builder, parent *cobra.Command) {
 		}
 
 		fmt.Fprintf(b, "### `%s`\n\n", command.CommandPath())
-		if command.Short != "" {
-			fmt.Fprintf(b, "%s\n\n", normalizeSkillText(command.Short))
+		short := normalizeSkillText(command.Short)
+		long := normalizeSkillText(command.Long)
+		if short != "" {
+			fmt.Fprintf(b, "%s\n\n", short)
+		}
+		if long != "" && long != short {
+			fmt.Fprintf(b, "%s\n\n", long)
 		}
 		fmt.Fprintf(b, "Usage: `%s`\n\n", command.UseLine())
+
+		if example := strings.TrimSpace(command.Example); example != "" {
+			b.WriteString("Examples:\n\n```bash\n")
+			b.WriteString(example)
+			b.WriteString("\n```\n\n")
+		}
 
 		flags := command.NonInheritedFlags()
 		if hasDocumentedFlags(flags) {
