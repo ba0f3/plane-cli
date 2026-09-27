@@ -2,6 +2,8 @@ package wiki
 
 import (
 	"fmt"
+	"os"
+	"unicode/utf8"
 
 	"github.com/ba0f3/plane-cli/internal/api"
 	"github.com/ba0f3/plane-cli/internal/config"
@@ -13,6 +15,8 @@ var (
 	archived     bool
 	updatedAfter string
 	pageName     string
+	pageMarkdown string
+	pageFile     string
 	pageHTML     string
 	pageParent   string
 	pageColor    string
@@ -36,7 +40,9 @@ func init() {
 
 	for _, c := range []*cobra.Command{create, update} {
 		c.Flags().StringVar(&pageName, "name", "", "Page name")
-		c.Flags().StringVar(&pageHTML, "html", "", "Page description_html")
+		c.Flags().StringVar(&pageMarkdown, "markdown", "", "Markdown page content (sent to Plane unchanged)")
+		c.Flags().StringVar(&pageFile, "file", "", "Read Markdown page content from a UTF-8 file")
+		c.Flags().StringVar(&pageHTML, "html", "", "Raw description_html compatibility escape hatch")
 		c.Flags().StringVar(&pageParent, "parent", "", "Parent page UUID")
 		c.Flags().StringVar(&pageColor, "color", "", "Page color")
 		c.Flags().Float64Var(&pageSort, "sort-order", 0, "Page sort order")
@@ -88,6 +94,42 @@ func runShow(cmd *cobra.Command, args []string) error {
 	return output.NewFormatter(config.Cfg.OutputFormat, false).Print(page)
 }
 
+func addPageContent(cmd *cobra.Command, payload map[string]interface{}) error {
+	contentFlags := 0
+	if cmd.Flags().Changed("markdown") {
+		contentFlags++
+	}
+	if cmd.Flags().Changed("file") {
+		contentFlags++
+	}
+	if cmd.Flags().Changed("html") {
+		contentFlags++
+	}
+	if contentFlags > 1 {
+		return fmt.Errorf("--file, --markdown, and --html are mutually exclusive")
+	}
+
+	if cmd.Flags().Changed("file") {
+		content, err := os.ReadFile(pageFile)
+		if err != nil {
+			return fmt.Errorf("read markdown file %q: %w", pageFile, err)
+		}
+		if !utf8.Valid(content) {
+			return fmt.Errorf("markdown file %q is not valid UTF-8", pageFile)
+		}
+		payload["description_markdown"] = string(content)
+		return nil
+	}
+	if cmd.Flags().Changed("markdown") {
+		payload["description_markdown"] = pageMarkdown
+		return nil
+	}
+	if cmd.Flags().Changed("html") {
+		payload["description_html"] = pageHTML
+	}
+	return nil
+}
+
 func writePayload(cmd *cobra.Command, requireName bool) (map[string]interface{}, error) {
 	payload := map[string]interface{}{}
 	if cmd.Flags().Changed("name") {
@@ -99,8 +141,8 @@ func writePayload(cmd *cobra.Command, requireName bool) (map[string]interface{},
 	if requireName {
 		payload["name"] = pageName
 	}
-	if cmd.Flags().Changed("html") {
-		payload["description_html"] = pageHTML
+	if err := addPageContent(cmd, payload); err != nil {
+		return nil, err
 	}
 	if cmd.Flags().Changed("parent") {
 		payload["parent"] = pageParent
