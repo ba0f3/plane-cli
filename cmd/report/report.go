@@ -189,6 +189,10 @@ func assigneeNames(issue plane.Issue) []string {
 }
 
 func runSummary(cmd *cobra.Command, args []string) error {
+	now := time.Now()
+	if err := validateReportFilters(now); err != nil {
+		return err
+	}
 	records, err := collect()
 	if err != nil {
 		return err
@@ -204,7 +208,6 @@ func runSummary(cmd *cobra.Command, args []string) error {
 		Points     int
 	}
 	m := map[string]*agg{}
-	now := time.Now()
 	for _, r := range records {
 		key := r.Workspace + "\x00" + r.Project.Identifier
 		a := m[key]
@@ -223,10 +226,8 @@ func runSummary(cmd *cobra.Command, args []string) error {
 		if len(r.Issue.Assignees) == 0 {
 			a.Unassigned++
 		}
-		if r.Issue.TargetDate != "" && a.Active > 0 {
-			if due, err := time.Parse("2006-01-02", r.Issue.TargetDate); err == nil && due.Before(now) && group != "completed" && group != "cancelled" && group != "canceled" {
-				a.Overdue++
-			}
+		if isOverdueDate(r.Issue.TargetDate, now) && group != "completed" && group != "cancelled" && group != "canceled" {
+			a.Overdue++
 		}
 	}
 	type row struct {
@@ -262,8 +263,11 @@ func runSummary(cmd *cobra.Command, args []string) error {
 }
 
 func runWorkload(cmd *cobra.Command, args []string) error {
-	if workloadMetric != "count" && workloadMetric != "points" {
-		return fmt.Errorf("invalid --metric %q; use count or points", workloadMetric)
+	if err := validateReportFilters(time.Now()); err != nil {
+		return err
+	}
+	if err := validateWorkloadFlags(); err != nil {
+		return err
 	}
 	records, err := collect()
 	if err != nil {
@@ -346,6 +350,12 @@ func runWorkload(cmd *cobra.Command, args []string) error {
 func runActivity(cmd *cobra.Command, args []string) error {
 	if reportSince == "" {
 		reportSince = "24h"
+	}
+	if err := validateReportFilters(time.Now()); err != nil {
+		return err
+	}
+	if err := validateActivityFlags(); err != nil {
+		return err
 	}
 	records, err := collect()
 	if err != nil {
