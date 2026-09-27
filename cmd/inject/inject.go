@@ -40,7 +40,7 @@ var InjectCmd = &cobra.Command{
 
 This command updates or creates a section in the specified files with:
 - Issue command reference (plus optional modules via flags)
-- Reference to plane-cli context for full documentation
+- Reference to plane-cli context and skills for full documentation
 - Configuration options
 
 The section is marked with HTML comments so it can be automatically updated.
@@ -48,6 +48,7 @@ The section is marked with HTML comments so it can be automatically updated.
 Examples:
   plane-cli inject                    # Update all default agent files
   plane-cli inject --file AGENTS.md   # Update specific file
+  plane-cli inject --all              # Include all command families
   plane-cli inject --dry-run          # Show what would change
   plane-cli inject --force            # Force update even if unchanged`,
 	RunE: runInject,
@@ -204,7 +205,7 @@ func generateContent() string {
 
 ## Plane CLI Task Management
 
-The Plane CLI provides command-line access to your Plane workspace for issue tracking, project management, and team collaboration.
+The Plane CLI provides command-line access to your Plane workspace for issue tracking, project management, Wiki, reporting, digests, and administration.
 
 	`, markerStart, timestamp)
 
@@ -236,26 +237,36 @@ The Plane CLI provides command-line access to your Plane workspace for issue tra
 	if includeAll || includeIntake {
 		content += withBashFence(contextcmd.GetIntakeCommands())
 	}
+	if includeAll {
+		content += withBashFence(contextcmd.GetExtendedCommands())
+	}
 
 	// Keep the original sections for reference and tips
 	content += `### Full Command Reference
 
-For complete command documentation including modules, states, labels, cycles, and advanced features:
+For the authoritative self-describing agent documentation generated from the installed binary:
+
+` + "```" + `bash
+plane-cli skills
+plane-cli skills > SKILL.md
+` + "```" + `
+
+Legacy concise context is still available:
 
 ` + "```" + `bash
 # Default modules (issue, project, module, state, label, type)
 plane-cli context
 
-# All modules including optional (cycle, workspace, intake)
+# All modules including report, digest, wiki, admin, raw, cycle, workspace, and intake
 plane-cli context --all
 
-# Specific optional modules
-plane-cli context --workspace --cycle --intake --project
+# Specific optional legacy modules
+plane-cli context --workspace --cycle --intake
 ` + "```" + `
 
 ### Available Context Options
 
-- ` + "`" + `--all` + "`" + ` - Include all modules
+- ` + "`" + `--all` + "`" + ` - Include all command families
 - ` + "`" + `--project` + "`" + ` - Include project commands
 - ` + "`" + `--module` + "`" + ` - Include module commands
 - ` + "`" + `--state` + "`" + ` - Include state commands
@@ -267,10 +278,12 @@ plane-cli context --workspace --cycle --intake --project
 
 ### Important Notes
 
-- All entity references (assignees, labels, states) require UUIDs
-- Use ` + "`" + `plane-cli workspace members` + "`" + ` to get user IDs
+- Prefer ` + "`" + `plane-cli skills` + "`" + ` when an agent needs the exact capabilities of the installed binary
+- Use structured JSON/YAML output for agent parsing
+- Use ` + "`" + `plane-cli workspace members` + "`" + ` to resolve user IDs
 - Use ` + "`" + `plane-cli state list` + "`" + ` to get state IDs
 - Use ` + "`" + `plane-cli label list` + "`" + ` to get label IDs
+- Treat admin bulk and destructive commands as explicit operations; do not fan out writes implicitly
 
 ### Tips for Multiline Descriptions
 
