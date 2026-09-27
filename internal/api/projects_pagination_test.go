@@ -24,7 +24,7 @@ func TestClientListProjectsWalksCursorPagination(t *testing.T) {
 		case "":
 			response = Response{
 				Pagination: Pagination{NextCursor: "next-1", NextPageResults: true},
-				Results: mustMarshal(t, []plane.Project{{ID: "p1", Identifier: "P1", Name: "Project 1"}}),
+				Results:    mustMarshal(t, []plane.Project{{ID: "p1", Identifier: "P1", Name: "Project 1"}}),
 			}
 		case "next-1":
 			response = Response{
