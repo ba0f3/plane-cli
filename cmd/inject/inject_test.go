@@ -24,7 +24,7 @@ func TestGenerateContentIncludesAllFlagOptions(t *testing.T) {
 
 	content := generateContent()
 
-	assert.Contains(t, content, "`--all` - Include all modules")
+	assert.Contains(t, content, "`--all` - Include all command families")
 	assert.Contains(t, content, "`--project` - Include project commands")
 	assert.Contains(t, content, "`--module` - Include module commands")
 	assert.Contains(t, content, "`--state` - Include state commands")
@@ -37,7 +37,7 @@ func TestGenerateContentIncludesAllFlagOptions(t *testing.T) {
 
 func TestInjectCommandDescriptionReflectsCurrentBehavior(t *testing.T) {
 	assert.Contains(t, InjectCmd.Long, "Issue command reference (plus optional modules via flags)")
-	assert.NotContains(t, InjectCmd.Long, "Quick start commands for issue management")
+	assert.Contains(t, InjectCmd.Long, "context and skills")
 }
 
 func TestGenerateContentUsesBashFenceForIssueCommands(t *testing.T) {
@@ -47,4 +47,19 @@ func TestGenerateContentUsesBashFenceForIssueCommands(t *testing.T) {
 	content := generateContent()
 
 	assert.Contains(t, content, "## Issue (aliases: i, issues, ticket)\n```bash")
+}
+
+func TestGenerateContentAllIncludesModernCommandFamilies(t *testing.T) {
+	resetModuleFlags()
+	t.Cleanup(resetModuleFlags)
+	includeAll = true
+
+	content := generateContent()
+
+	assert.Contains(t, content, "plane-cli report summary")
+	assert.Contains(t, content, "plane-cli digest user")
+	assert.Contains(t, content, "plane-cli wiki list")
+	assert.Contains(t, content, "plane-cli admin token")
+	assert.Contains(t, content, "plane-cli raw <METHOD> <PATH>")
+	assert.Contains(t, content, "plane-cli skills")
 }

@@ -30,8 +30,8 @@ var WikiCmd = &cobra.Command{
 }
 
 func init() {
-	list := &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List Wiki pages", RunE: runList}
-	show := &cobra.Command{Use: "show <page-id>", Short: "Show one Wiki page", Args: cobra.ExactArgs(1), RunE: runShow}
+	list := &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List Wiki pages (metadata only; use show for content)", RunE: runList}
+	show := &cobra.Command{Use: "show <page-id>", Short: "Show one Wiki page including content", Args: cobra.ExactArgs(1), RunE: runShow}
 	create := &cobra.Command{Use: "create", Short: "Create a Wiki page", RunE: runCreate}
 	update := &cobra.Command{Use: "update <page-id>", Short: "Update a Wiki page", Args: cobra.ExactArgs(1), RunE: runUpdate}
 
@@ -79,7 +79,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	return output.NewFormatter(config.Cfg.OutputFormat, false).Print(pages)
+	return output.NewFormatter(config.Cfg.OutputFormat, false).Print(summarizeWikiPages(pages))
 }
 
 func runShow(cmd *cobra.Command, args []string) error {
