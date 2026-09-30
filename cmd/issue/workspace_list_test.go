@@ -12,7 +12,7 @@ import (
 func TestWorkspaceIssueMatchesFilters(t *testing.T) {
 	issue := plane.Issue{
 		State: plane.FlexibleState{ID: "state-1"},
-		Assignees: []plane.User{
+		Assignees: []plane.FlexibleUser{
 			{ID: "user-1", Email: "alice@example.com"},
 		},
 	}
@@ -52,7 +52,7 @@ func TestIssueKeyUsesProjectIdentifier(t *testing.T) {
 }
 
 func TestWorkspaceAssigneeNamesUsesBestAvailableIdentity(t *testing.T) {
-	issue := plane.Issue{Assignees: []plane.User{
+	issue := plane.Issue{Assignees: []plane.FlexibleUser{
 		{ID: "u1", DisplayName: "Alice"},
 		{ID: "u2", FirstName: "Bob", LastName: "Nguyen"},
 		{ID: "u3", Email: "carol@example.com"},
