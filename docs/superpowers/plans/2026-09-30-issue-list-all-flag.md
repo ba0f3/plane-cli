@@ -355,6 +355,9 @@ func configureIssueCommandEnv(t *testing.T, handler http.HandlerFunc) {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
+	prevCfg := config.Cfg
+	t.Cleanup(func() { config.Cfg = prevCfg })
+
 	t.Setenv("PLANE_API_KEY", "test-api-key")
 	config.Cfg.APIHost = server.URL
 	config.Cfg.DefaultWorkspace = "test-workspace"
@@ -790,11 +793,17 @@ git commit -m "feat: enforce --all ceiling across workspace projects"
 **Files:**
 - Modify: `AGENTS.md` (the "Quick Start - Issue Management" fenced code block)
 - Modify: `README.md` (search for the `plane-cli issue list` usage block)
-- Modify: `internal/api/comprehensive_integration_test.go` (append integration case)
 
 **Interfaces:**
 - Consumes: the `--all` flag registered in Task 2.
 - Produces: no code interfaces.
+
+**No integration test.** An earlier draft of this task created 501 real issues to
+exercised the ceiling against a live Plane workspace. That was dropped: at the
+5s pacing from `AGENTS.md` it is roughly 40 minutes of real writes, and a failure
+partway through the loop leaves hundreds of orphaned issues behind. The six
+`httptest` tests in Task 1 already cover the pagination loop, the filter
+forwarding, and the ceiling behaviour, which is the logic actually at risk.
 
 - [ ] **Step 1: Update the agent-facing docs**
 
@@ -811,54 +820,21 @@ Run `grep -n "issue list" README.md` to locate the usage block, then add
 `[--all]` to the `plane-cli issue list` line in it, matching the line-break
 style already used in that block.
 
-- [ ] **Step 3: Add the integration test**
+- [ ] **Step 3: Confirm no integration-tagged code is affected**
 
-Append to `internal/api/comprehensive_integration_test.go`, matching the file's
-existing build tag, helper style, and rate limiting:
+Run: `go vet -tags integration ./...`
 
-```go
-func TestListAllIssuesPagedReturnsMoreThanOnePage(t *testing.T) {
-	client, err := integrationClient()
-	if err != nil {
-		t.Skipf("integration client unavailable: %v", err)
-	}
+Expected: PASS with no vet errors. This task adds no code under the `integration`
+build tag; the existing suite must still compile unchanged.
 
-	projectID := integrationProjectID(t)
-	total := MaxAllIssues + 1
-	created := createTestIssuesForModule(t, client, total)
-
-	issues, err := client.ListAllIssuesPaged(projectID, IssueListOptions{}, MaxAllIssues)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--limit")
-
-	issues, err = client.ListAllIssuesPaged(projectID, IssueListOptions{}, total+10)
-	require.NoError(t, err)
-	assert.GreaterOrEqual(t, len(issues), total)
-	assert.NotEmpty(t, issues)
-}
-```
-
-If `integrationClient`, `integrationProjectID`, and `createTestIssuesForModule`
-do not already exist under those names in that file, reuse the actual helper
-names already used by its neighbouring tests rather than introducing new ones,
-and create issues with the existing `createTestIssueForModule` helper in a loop
-rather than adding a new creator.
-
-- [ ] **Step 4: Verify the integration test compiles**
-
-Run: `go vet -tags integration ./internal/api && go test -tags integration -run XXX_NONE ./internal/api`
-
-Expected: PASS with no vet errors. The tests themselves must not run, since they
-require `PLANE_API_KEY`.
-
-- [ ] **Step 5: Run the full gate**
+- [ ] **Step 4: Run the full gate**
 
 Run: `make check`
 
 Expected: `gofmt` clean, `go vet` clean, `golangci-lint` clean, all unit tests
 pass.
 
-- [ ] **Step 6: Verify the CLI surface by hand**
+- [ ] **Step 5: Verify the CLI surface by hand**
 
 Run: `go run . issue list --help | grep -A2 all`
 
@@ -868,10 +844,10 @@ Run: `go run . issue search --help | grep all`
 
 Expected: the same flag appears under search.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add AGENTS.md README.md internal/api/comprehensive_integration_test.go
+git add AGENTS.md README.md
 git commit -m "docs: document --all issue listing flag"
 ```
 
@@ -892,13 +868,15 @@ git commit -m "docs: document --all issue listing flag"
   ceiling as an aggregate budget: Task 3 Steps 3-4.
 - `ListAllIssues` untouched: no task modifies `internal/api/reporting.go`.
 - Output columns and JSON keys unchanged: no task edits the `issueOutput` structs.
-- Unit tests and the tagged integration test: Task 1 Step 1, Task 2 Step 1,
-  Task 3 Step 1, Task 4 Step 3.
+- Unit tests: Task 1 Step 1, Task 2 Step 1, Task 3 Step 1. No
+  `integration`-tagged test is added, by design; Task 4 Step 3 exists only to
+  confirm the tagged suite still compiles.
 
 **Placeholder scan.** No TBD, no "add appropriate error handling", no "similar to
-Task N". Every code step carries literal code. The one conditional instruction is
-Task 4 Step 3, which names the specific helper symbols to use if the ones written
-do not exist — it does not defer a decision.
+Task N". Every code step carries literal code. Task 2 Step 4 tells the implementer
+to add the `searchCmd` flag registration "alongside the other flag registrations"
+rather than repeating an identical block; that is a location hint, not a missing
+decision, since the surrounding registrations are listed immediately above it.
 
 **Type consistency.** `listAll` and `errTooManyIssues` are declared once in
 `cmd/issue/issue.go` (Task 2 Step 3) and consumed in `workspace_list.go` (Task 3),
