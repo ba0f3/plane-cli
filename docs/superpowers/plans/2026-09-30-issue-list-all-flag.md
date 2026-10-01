@@ -889,3 +889,32 @@ is called with that exact arity in Task 2 Step 5, Task 3 Step 3, and Task 4 Step
 Task 3's client-returning helper is `newWorkspaceTestClient`. They are distinct
 names because the first only points config at a test server while the second
 hands back an `*api.Client` for tests that bypass `NewClient`.
+
+## Deviations Found During Execution
+
+Four things in this plan were wrong against the real code. All four were fixed
+in place; the plan text above still reads as originally written.
+
+1. **The pagination loop could never detect the ceiling.** Task 1 specified
+   `for len(all) < max`, which stops the moment `len(all)` reaches `max` and
+   therefore never fetches the `max+1`-th item. The ceiling error was
+   unreachable and `TestListAllIssuesPagedErrorsAboveMax` caught it. Corrected to
+   `for len(all) <= max`, with a comment explaining why. Consequence: a result
+   set of exactly `max` costs one extra request to prove it ended.
+
+2. **`table` is not a valid output format.** Task 2's tests set
+   `config.Cfg.OutputFormat = "table"`, but `output.ValidateFormat` rejects it —
+   table output has been removed from this project. Changed to `json`.
+
+3. **`AGENTS.md` is generated; `cmd/context/context.go` is the source.** Task 4
+   Step 1 said to edit `AGENTS.md`, which is wrong: that block is emitted by
+   `plane-cli inject` from the literal at `cmd/context/context.go:124`, so any
+   manual edit is overwritten. The edit was moved to `context.go`. Related trap:
+   running `plane-cli inject` to verify regenerates the whole block and produces
+   a large unrelated diff — do not run it as a verification step.
+
+4. **`internal/config` tests fail in this environment, pre-existing.**
+   `TestInitConfig` and `TestAPIKeyStorage` read `PLANE_API_HOST` and
+   `PLANE_API_KEY` from the ambient shell environment, which this machine
+   exports. They fail on `main` too. Verified green via
+   `env -u PLANE_API_HOST -u PLANE_API_KEY make check`.
