@@ -15,6 +15,7 @@ var (
 	stateFilter    string
 	assigneeFilter string
 	perPage        int
+	listAll        bool
 
 	issueTitle       string
 	issueDescription string
@@ -23,6 +24,12 @@ var (
 	issueAssignees   []string
 	issueLabels      []string
 )
+
+// errTooManyIssues is the single error shape reported when a complete fetch
+// exceeds the hard ceiling. Truncating instead would look like a complete list.
+func errTooManyIssues(max int) error {
+	return fmt.Errorf("more than %d matching issues; use --limit to page through results", max)
+}
 
 var IssueCmd = &cobra.Command{
 	Use:     "issue",
@@ -40,7 +47,8 @@ var listCmd = &cobra.Command{
 Examples:
   plane-cli issue list
   plane-cli issue list --state <state-id>
-  plane-cli issue list --assignee <assignee-id>`,
+  plane-cli issue list --assignee <assignee-id>
+  plane-cli issue list --all`,
 	RunE: runList,
 }
 
@@ -100,6 +108,10 @@ func init() {
 	listCmd.Flags().StringVarP(&stateFilter, "state", "s", "", "Filter by state ID")
 	listCmd.Flags().StringVar(&assigneeFilter, "assignee", "", "Filter by assignee ID")
 	listCmd.Flags().IntVarP(&perPage, "limit", "l", 20, "Number of issues to show per page")
+	listCmd.Flags().BoolVar(&listAll, "all", false, "Fetch every matching issue instead of truncating to --limit (max 500)")
+
+	// Search flags
+	searchCmd.Flags().BoolVar(&listAll, "all", false, "Fetch every matching issue instead of truncating (max 500)")
 
 	// Create flags
 	createCmd.Flags().StringVarP(&issueTitle, "title", "t", "", "Issue title")
@@ -134,9 +146,21 @@ func runList(cmd *cobra.Command, args []string) error {
 		Limit:    perPage,
 	}
 
-	issues, _, err := client.ListIssues(projectID, opts)
-	if err != nil {
-		return err
+	var issues []plane.Issue
+	if listAll {
+		// --all supersedes --limit, so perPage is deliberately not forwarded.
+		paged, err := client.ListAllIssuesPaged(projectID,
+			api.IssueListOptions{State: stateFilter, Assignee: assigneeFilter}, api.MaxAllIssues)
+		if err != nil {
+			return err
+		}
+		issues = paged
+	} else {
+		result, _, err := client.ListIssues(projectID, opts)
+		if err != nil {
+			return err
+		}
+		issues = result
 	}
 
 	if len(issues) == 0 {
@@ -390,6 +414,10 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	issues, err := client.SearchIssues(query)
 	if err != nil {
 		return err
+	}
+
+	if listAll && len(issues) > api.MaxAllIssues {
+		return errTooManyIssues(api.MaxAllIssues)
 	}
 
 	if len(issues) == 0 {

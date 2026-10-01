@@ -54,13 +54,13 @@ func runWorkspaceList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	records, err := collectWorkspaceIssues(client, stateFilter, assigneeFilter)
+	records, err := collectWorkspaceIssues(client, stateFilter, assigneeFilter, listAll)
 	if err != nil {
 		return err
 	}
 
 	sortWorkspaceIssues(records)
-	if perPage > 0 && len(records) > perPage {
+	if !listAll && perPage > 0 && len(records) > perPage {
 		records = records[:perPage]
 	}
 
@@ -87,7 +87,12 @@ func runWorkspaceList(cmd *cobra.Command, args []string) error {
 	return output.NewFormatter(config.Cfg.OutputFormat, false).Print(rows)
 }
 
-func collectWorkspaceIssues(client *api.Client, stateID, assigneeID string) ([]workspaceIssueRecord, error) {
+// collectWorkspaceIssues gathers issues across every visible project. When all
+// is false the fetch is unbounded and perPage truncation happens in the caller,
+// matching the historical behaviour. When all is true each project is fetched
+// with the ceiling budget remaining after the previous projects, so the ceiling
+// applies to the workspace aggregate rather than per project.
+func collectWorkspaceIssues(client *api.Client, stateID, assigneeID string, all bool) ([]workspaceIssueRecord, error) {
 	projects, err := client.ListProjects()
 	if err != nil {
 		return nil, fmt.Errorf("list workspace projects: %w", err)
@@ -95,17 +100,33 @@ func collectWorkspaceIssues(client *api.Client, stateID, assigneeID string) ([]w
 
 	records := make([]workspaceIssueRecord, 0)
 	for _, project := range projects {
-		issues, err := client.ListAllIssues(project.ID)
+		var issues []plane.Issue
+		if all {
+			budget := api.MaxAllIssues - len(records)
+			issues, err = client.ListAllIssuesPaged(project.ID,
+				api.IssueListOptions{State: stateID, Assignee: assigneeID}, budget)
+		} else {
+			issues, err = client.ListAllIssues(project.ID)
+		}
 		if err != nil {
+			if all {
+				return nil, errTooManyIssues(api.MaxAllIssues)
+			}
 			return nil, fmt.Errorf("project %s: list issues: %w", projectDisplay(project), err)
 		}
+
 		for _, issue := range issues {
 			if !workspaceIssueMatches(issue, stateID, assigneeID) {
 				continue
 			}
 			records = append(records, workspaceIssueRecord{Project: project, Issue: issue})
 		}
+
+		if all && len(records) >= api.MaxAllIssues {
+			return nil, errTooManyIssues(api.MaxAllIssues)
+		}
 	}
+
 	return records, nil
 }
 

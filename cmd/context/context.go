@@ -122,7 +122,7 @@ plane-cli issue activity view [--output json] <issue-id:seq_id|uuid> <activity-i
 
 func getIssueQuickStartCommands() string {
 	return `plane-cli issue list [--output json] [--state <id:uuid>] [--assignee <id:uuid>]
-                 [--limit <count:int>]
+                 [--limit <count:int>] [--all]
 
 plane-cli issue view [--output json] <id:seq_id|uuid>
 
