@@ -273,6 +273,7 @@ plane-cli project create
 
 # Work items
 plane-cli issue list
+plane-cli issue list --all              # every issue incl. sub-issues, max 500
 plane-cli issue view 123
 plane-cli issue create --title "Fix login" --priority high
 plane-cli issue edit 123 --state STATE_ID
