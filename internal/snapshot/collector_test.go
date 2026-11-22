@@ -43,7 +43,7 @@ func TestResolveProjectsSingleWorkspace(t *testing.T) {
 		writeProjects(t, w, map[string]string{"id": "p1", "identifier": "GAME", "name": "Game"})
 	}))
 
-	refs, err := resolveProjects(Scope{Workspace: "ws"}, client)
+	refs, err := resolveProjects(Scope{Workspace: "ws"}, client, func(time.Duration) {})
 	require.NoError(t, err)
 	assert.Equal(t, []projectRef{{Workspace: "ws", ID: "p1", Identifier: "GAME"}}, refs)
 }
@@ -56,7 +56,7 @@ func TestResolveProjectsFiltersBySelector(t *testing.T) {
 		)
 	}))
 
-	refs, err := resolveProjects(Scope{Workspace: "ws", Projects: []string{"game"}}, client)
+	refs, err := resolveProjects(Scope{Workspace: "ws", Projects: []string{"game"}}, client, func(time.Duration) {})
 	require.NoError(t, err)
 	assert.Equal(t, []projectRef{{Workspace: "ws", ID: "p1", Identifier: "GAME"}}, refs)
 }
@@ -77,7 +77,7 @@ func TestResolveProjectsAllWorkspaces(t *testing.T) {
 		}
 	}))
 
-	refs, err := resolveProjects(Scope{AllWorkspaces: true}, client)
+	refs, err := resolveProjects(Scope{AllWorkspaces: true}, client, func(time.Duration) {})
 	require.NoError(t, err)
 	assert.Equal(t, []projectRef{
 		{Workspace: "ws-a", ID: "p1", Identifier: "GAME"},
@@ -90,7 +90,7 @@ func TestResolveProjectsRejectsAllWorkspacesWithWorkspace(t *testing.T) {
 		t.Fatal("no HTTP request expected")
 	}))
 
-	_, err := resolveProjects(Scope{Workspace: "ws", AllWorkspaces: true}, client)
+	_, err := resolveProjects(Scope{Workspace: "ws", AllWorkspaces: true}, client, func(time.Duration) {})
 	assert.ErrorContains(t, err, "--all-workspaces")
 }
 
@@ -161,7 +161,85 @@ func TestFetchPageRetries429AndRespectsRetryAfter(t *testing.T) {
 		func(d time.Duration) { slept = append(slept, d) })
 	require.NoError(t, err)
 	assert.Equal(t, 2, calls)
-	assert.Equal(t, []time.Duration{2 * time.Second}, slept)
+	require.Len(t, slept, 1)
+	// A 2s Retry-After is jittered within [1s, 2s].
+	assert.GreaterOrEqual(t, slept[0], time.Second)
+	assert.LessOrEqual(t, slept[0], 2*time.Second)
+}
+
+func TestFetchPageRejectsMissingResults(t *testing.T) {
+	client, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"next_page_results":false}`)
+	}))
+
+	_, err := fetchPage(client, projectRef{Workspace: "ws", ID: "p1"}, "expand", "", func(time.Duration) {})
+	assert.ErrorContains(t, err, "missing results")
+}
+
+func TestFetchPageRejectsNullResults(t *testing.T) {
+	client, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"results":null,"next_page_results":false}`)
+	}))
+
+	_, err := fetchPage(client, projectRef{Workspace: "ws", ID: "p1"}, "expand", "", func(time.Duration) {})
+	assert.ErrorContains(t, err, "results must be an array")
+}
+
+func TestRetryDelayWithJitterStaysWithinBounds(t *testing.T) {
+	tests := []struct {
+		name    string
+		header  string
+		attempt int
+		base    time.Duration
+	}{
+		{name: "retry-after seconds", header: "2", attempt: 0, base: 2 * time.Second},
+		{name: "retry-after capped at 30s", header: "120", attempt: 0, base: 30 * time.Second},
+		{name: "exponential first retry", attempt: 0, base: time.Second},
+		{name: "exponential third retry", attempt: 2, base: 4 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for i := 0; i < 100; i++ {
+				delay := retryDelayWithJitter(tt.header, tt.attempt)
+				assert.GreaterOrEqual(t, delay, tt.base/2)
+				assert.LessOrEqual(t, delay, tt.base)
+			}
+		})
+	}
+}
+
+func TestResolveProjectsRetriesDiscovery429(t *testing.T) {
+	var calls int
+	var slept []time.Duration
+	client, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		writeProjects(t, w, map[string]string{"id": "p1", "identifier": "GAME"})
+	}))
+
+	refs, err := resolveProjects(Scope{Workspace: "ws"}, client,
+		func(d time.Duration) { slept = append(slept, d) })
+	require.NoError(t, err)
+	assert.Equal(t, 2, calls)
+	require.Len(t, slept, 1)
+	assert.GreaterOrEqual(t, slept[0], 500*time.Millisecond)
+	assert.LessOrEqual(t, slept[0], time.Second)
+	assert.Equal(t, []projectRef{{Workspace: "ws", ID: "p1", Identifier: "GAME"}}, refs)
+}
+
+func TestResolveProjectsReportsTokenScopeOn401(t *testing.T) {
+	client, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"error":"denied"}`)
+	}))
+
+	_, err := resolveProjects(Scope{Workspace: "ws"}, client, func(time.Duration) {})
+	assert.ErrorContains(t, err, "workspace ws: list projects")
+	assert.ErrorContains(t, err, "token scope")
 }
 
 func TestFetchPageFailsOn401(t *testing.T) {
@@ -181,7 +259,7 @@ func TestCollectBuildsSnapshot(t *testing.T) {
 		config.Cfg.APIHost, config.Cfg.DefaultWorkspace = originalHost, originalWorkspace
 	})
 
-	client, server := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	_, server := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/workspaces/ws/projects/":
 			writeProjects(t, w, map[string]string{"id": "p1", "identifier": "GAME"})
@@ -200,5 +278,23 @@ func TestCollectBuildsSnapshot(t *testing.T) {
 	assert.Equal(t, 2, snapshot.Coverage[0].Retained)
 	assert.NotEmpty(t, snapshot.StartedAt)
 	assert.NotEmpty(t, snapshot.FinishedAt)
-	assert.NotNil(t, client)
+}
+
+func TestCollectRejectsUnmatchedSelector(t *testing.T) {
+	t.Setenv("PLANE_API_KEY", "test-key")
+	originalHost, originalWorkspace := config.Cfg.APIHost, config.Cfg.DefaultWorkspace
+	t.Cleanup(func() {
+		config.Cfg.APIHost, config.Cfg.DefaultWorkspace = originalHost, originalWorkspace
+	})
+
+	_, server := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/workspaces/ws/projects/" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		writeProjects(t, w, map[string]string{"id": "p1", "identifier": "GAME"})
+	}))
+	config.Cfg.APIHost, config.Cfg.DefaultWorkspace = server.URL, ""
+
+	_, err := Collect(Scope{Workspace: "ws", Projects: []string{"missing"}})
+	assert.ErrorContains(t, err, "no projects matched")
 }

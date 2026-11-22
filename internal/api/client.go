@@ -128,19 +128,39 @@ func (c *Client) Get(path string, query url.Values, v interface{}) error {
 	return c.Do(req, v)
 }
 
-func (c *Client) DoRaw(req *http.Request) ([]byte, error) {
+// HTTPStatusError reports a non-successful HTTP response from the Plane API.
+// It keeps the status code and body available to callers that need to apply
+// retry or scope-specific policy.
+type HTTPStatusError struct {
+	Status int
+	Body   []byte
+}
+
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("API error (status %d): %s", e.Status, string(e.Body))
+}
+
+func (c *Client) doRequest(req *http.Request) (int, http.Header, []byte, error) {
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return nil, err
+		return 0, nil, nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		return 0, nil, nil, err
+	}
+	return resp.StatusCode, resp.Header, body, nil
+}
+
+func (c *Client) DoRaw(req *http.Request) ([]byte, error) {
+	status, _, body, err := c.doRequest(req)
+	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+	if status >= 400 {
+		return nil, &HTTPStatusError{Status: status, Body: body}
 	}
 	return body, nil
 }
@@ -154,6 +174,21 @@ func (c *Client) GetRaw(path string, query url.Values) ([]byte, error) {
 		return nil, err
 	}
 	return c.DoRaw(req)
+}
+
+// GetRawWithStatus performs a GET and returns the status code, response
+// headers, and body without treating HTTP error statuses as errors. Callers
+// that need status-specific policy (such as 429 backoff) should use this
+// instead of re-implementing the request and body-read path.
+func (c *Client) GetRawWithStatus(path string, query url.Values) (int, http.Header, []byte, error) {
+	if query != nil {
+		path = path + "?" + query.Encode()
+	}
+	req, err := c.NewRequest(http.MethodGet, path, nil)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	return c.doRequest(req)
 }
 
 func (c *Client) Post(path string, body interface{}, v interface{}) error {

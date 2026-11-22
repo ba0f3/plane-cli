@@ -170,6 +170,53 @@ func TestClient_Do(t *testing.T) {
 	}
 }
 
+func TestClient_DoRawReturnsHTTPStatusError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, err := w.Write([]byte(`{"error":"slow down"}`))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client := &Client{
+		HTTPClient: &http.Client{Timeout: DefaultTimeout},
+		BaseURL:    server.URL,
+		APIKey:     "test-key",
+	}
+
+	req, err := client.NewRequest(http.MethodGet, "/test", nil)
+	require.NoError(t, err)
+
+	_, err = client.DoRaw(req)
+	var statusErr *HTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	assert.Equal(t, http.StatusTooManyRequests, statusErr.Status)
+	assert.JSONEq(t, `{"error":"slow down"}`, string(statusErr.Body))
+	assert.Equal(t, `API error (status 429): {"error":"slow down"}`, err.Error())
+}
+
+func TestClient_GetRawWithStatusDoesNotErrorOnHTTPStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "7")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, err := w.Write([]byte(`{"error":"slow down"}`))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client := &Client{
+		HTTPClient: &http.Client{Timeout: DefaultTimeout},
+		BaseURL:    server.URL,
+		APIKey:     "test-key",
+	}
+
+	status, headers, body, err := client.GetRawWithStatus("/test", nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusTooManyRequests, status)
+	assert.Equal(t, "7", headers.Get("Retry-After"))
+	assert.JSONEq(t, `{"error":"slow down"}`, string(body))
+}
+
 func TestClient_ListProjects(t *testing.T) {
 	mockProjects := []plane.Project{
 		{

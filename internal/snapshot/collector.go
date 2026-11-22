@@ -1,9 +1,11 @@
 package snapshot
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -34,15 +36,19 @@ type rawPage struct {
 	NextCursor      string            `json:"next_cursor"`
 }
 
-func resolveProjects(scope Scope, client *api.Client) ([]projectRef, error) {
+func resolveProjects(scope Scope, client *api.Client, sleep func(time.Duration)) ([]projectRef, error) {
 	var workspaces []string
 	if scope.AllWorkspaces {
 		if strings.TrimSpace(scope.Workspace) != "" {
 			return nil, fmt.Errorf("--all-workspaces cannot be combined with --workspace")
 		}
-		discovered, err := client.ListWorkspaces()
-		if err != nil {
-			return nil, fmt.Errorf("list workspaces: %w", err)
+		var discovered []api.WorkspaceSummary
+		if err := retryDiscovery("list workspaces", sleep, func() error {
+			var err error
+			discovered, err = client.ListWorkspaces()
+			return err
+		}); err != nil {
+			return nil, err
 		}
 		for _, workspace := range discovered {
 			workspaces = append(workspaces, workspace.Slug)
@@ -61,9 +67,13 @@ func resolveProjects(scope Scope, client *api.Client) ([]projectRef, error) {
 	var refs []projectRef
 	for _, workspace := range workspaces {
 		scoped := client.CloneForWorkspace(workspace)
-		projects, err := scoped.ListProjects()
-		if err != nil {
-			return nil, fmt.Errorf("workspace %s: list projects: %w", workspace, err)
+		var projects []plane.Project
+		if err := retryDiscovery(fmt.Sprintf("workspace %s: list projects", workspace), sleep, func() error {
+			var err error
+			projects, err = scoped.ListProjects()
+			return err
+		}); err != nil {
+			return nil, err
 		}
 		for _, project := range projects {
 			if len(scope.Projects) > 0 && !matchesAny(project, scope.Projects) {
@@ -73,6 +83,34 @@ func resolveProjects(scope Scope, client *api.Client) ([]projectRef, error) {
 		}
 	}
 	return refs, nil
+}
+
+// retryDiscovery applies the same bounded 429 backoff and 401/403 token-scope
+// policy to instance and project discovery calls that fetchPage applies to
+// work-item pages.
+func retryDiscovery(what string, sleep func(time.Duration), fn func() error) error {
+	for attempt := 0; ; attempt++ {
+		err := fn()
+		if err == nil {
+			return nil
+		}
+		var statusErr *api.HTTPStatusError
+		if !errors.As(err, &statusErr) {
+			return fmt.Errorf("%s: %w", what, err)
+		}
+		switch statusErr.Status {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return fmt.Errorf("%s: API error (status %d): check token scope; body: %s",
+				what, statusErr.Status, string(statusErr.Body))
+		case http.StatusTooManyRequests:
+			if attempt >= maxRetries {
+				return fmt.Errorf("%s: %w", what, err)
+			}
+			sleep(retryDelayWithJitter("", attempt))
+		default:
+			return fmt.Errorf("%s: %w", what, err)
+		}
+	}
 }
 
 func matchesAny(project plane.Project, selectors []string) bool {
@@ -96,11 +134,55 @@ func retryDelay(header string, attempt int) time.Duration {
 			return time.Duration(seconds) * time.Second
 		}
 	}
-	return time.Duration(1<<attempt) * time.Second
+	delay := time.Duration(1<<attempt) * time.Second
+	if delay > maxRetryDelay {
+		delay = maxRetryDelay
+	}
+	return delay
+}
+
+// retryDelayWithJitter spreads retries across [base/2, base] so that parallel
+// clients do not retry in lockstep after a shared 429.
+func retryDelayWithJitter(header string, attempt int) time.Duration {
+	base := retryDelay(header, attempt)
+	if base <= 1 {
+		return base
+	}
+	return base/2 + time.Duration(rand.Int63n(int64(base/2)+1))
+}
+
+// decodePage validates the pagination envelope. A response without a results
+// array is an error, never an empty page.
+func decodePage(body []byte, ref projectRef) (rawPage, error) {
+	var envelope struct {
+		Results         json.RawMessage `json:"results"`
+		NextPageResults *bool           `json:"next_page_results"`
+		NextCursor      string          `json:"next_cursor"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return rawPage{}, fmt.Errorf("decode work-item page: %w", err)
+	}
+	if envelope.Results == nil {
+		return rawPage{}, fmt.Errorf("missing results in %s/%s response", ref.Workspace, ref.Identifier)
+	}
+	if bytes.Equal(bytes.TrimSpace(envelope.Results), []byte("null")) {
+		return rawPage{}, fmt.Errorf("results must be an array in %s/%s response", ref.Workspace, ref.Identifier)
+	}
+	var results []json.RawMessage
+	if err := json.Unmarshal(envelope.Results, &results); err != nil {
+		return rawPage{}, fmt.Errorf("results must be an array in %s/%s response: %w", ref.Workspace, ref.Identifier, err)
+	}
+	if envelope.NextPageResults == nil {
+		return rawPage{}, fmt.Errorf("missing next_page_results in %s/%s response", ref.Workspace, ref.Identifier)
+	}
+	return rawPage{
+		Results:         results,
+		NextPageResults: envelope.NextPageResults,
+		NextCursor:      envelope.NextCursor,
+	}, nil
 }
 
 func fetchPage(client *api.Client, ref projectRef, expand, cursor string, sleep func(time.Duration)) (rawPage, error) {
-	var page rawPage
 	path := fmt.Sprintf("/workspaces/%s/projects/%s/work-items/",
 		url.PathEscape(ref.Workspace), url.PathEscape(ref.ID))
 	query := url.Values{}
@@ -110,40 +192,27 @@ func fetchPage(client *api.Client, ref projectRef, expand, cursor string, sleep 
 		query.Set("cursor", cursor)
 	}
 
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		req, err := client.NewRequest(http.MethodGet, path+"?"+query.Encode(), nil)
+	for attempt := 0; ; attempt++ {
+		status, headers, body, err := client.GetRawWithStatus(path, query)
 		if err != nil {
-			return page, err
-		}
-		resp, err := client.HTTPClient.Do(req)
-		if err != nil {
-			return page, err
-		}
-		body, readErr := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if readErr != nil {
-			return page, readErr
+			return rawPage{}, err
 		}
 
-		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRetries {
-			sleep(retryDelay(resp.Header.Get("Retry-After"), attempt))
+		if status == http.StatusTooManyRequests {
+			if attempt >= maxRetries {
+				return rawPage{}, &api.HTTPStatusError{Status: status, Body: body}
+			}
+			sleep(retryDelayWithJitter(headers.Get("Retry-After"), attempt))
 			continue
 		}
-		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-			return page, fmt.Errorf("API error (status %d): check token scope; body: %s", resp.StatusCode, string(body))
+		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			return rawPage{}, fmt.Errorf("API error (status %d): check token scope; body: %s", status, string(body))
 		}
-		if resp.StatusCode >= 400 {
-			return page, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+		if status >= 400 {
+			return rawPage{}, &api.HTTPStatusError{Status: status, Body: body}
 		}
-		if err := json.Unmarshal(body, &page); err != nil {
-			return page, fmt.Errorf("decode work-item page: %w", err)
-		}
-		if page.NextPageResults == nil {
-			return page, fmt.Errorf("missing next_page_results in %s/%s response", ref.Workspace, ref.Identifier)
-		}
-		return page, nil
+		return decodePage(body, ref)
 	}
-	return page, fmt.Errorf("exceeded %d retries for %s/%s", maxRetries, ref.Workspace, ref.Identifier)
 }
 
 func collectProject(client *api.Client, ref projectRef, expand string, byID map[string]Record, sleep func(time.Duration)) (ProjectCoverage, error) {
@@ -201,9 +270,12 @@ func Collect(scope Scope) (*Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	refs, err := resolveProjects(scope, client)
+	refs, err := resolveProjects(scope, client, time.Sleep)
 	if err != nil {
 		return nil, err
+	}
+	if len(scope.Projects) > 0 && len(refs) == 0 {
+		return nil, fmt.Errorf("no projects matched selector(s): %s", strings.Join(scope.Projects, ", "))
 	}
 
 	byID := make(map[string]Record)
