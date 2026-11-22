@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/ba0f3/plane-cli/internal/timeutil"
 )
 
 func validateReportFilters(now time.Time) error {
@@ -17,13 +19,13 @@ func validateReportFilters(now time.Time) error {
 	var since, until time.Time
 	var err error
 	if strings.TrimSpace(reportSince) != "" {
-		since, err = parseTime(reportSince, now)
+		since, err = timeutil.ParseTime(reportSince, now)
 		if err != nil {
 			return fmt.Errorf("invalid --since: %w", err)
 		}
 	}
 	if strings.TrimSpace(reportUntil) != "" {
-		until, err = parseTime(reportUntil, now)
+		until, err = timeutil.ParseTime(reportUntil, now)
 		if err != nil {
 			return fmt.Errorf("invalid --until: %w", err)
 		}

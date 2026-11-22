@@ -10,6 +10,7 @@ import (
 	"github.com/ba0f3/plane-cli/internal/api"
 	"github.com/ba0f3/plane-cli/internal/config"
 	"github.com/ba0f3/plane-cli/internal/output"
+	"github.com/ba0f3/plane-cli/internal/timeutil"
 	"github.com/ba0f3/plane-cli/pkg/plane"
 	"github.com/spf13/cobra"
 )
@@ -117,38 +118,18 @@ func issueInWindow(issue plane.Issue) bool {
 		return false
 	}
 	if reportSince != "" {
-		since, err := parseTime(reportSince, time.Now())
+		since, err := timeutil.ParseTime(reportSince, time.Now())
 		if err != nil || t.Before(since) {
 			return false
 		}
 	}
 	if reportUntil != "" {
-		until, err := parseTime(reportUntil, time.Now())
+		until, err := timeutil.ParseTime(reportUntil, time.Now())
 		if err != nil || t.After(until) {
 			return false
 		}
 	}
 	return true
-}
-
-func parseTime(v string, now time.Time) (time.Time, error) {
-	v = strings.TrimSpace(v)
-	if strings.HasSuffix(v, "d") {
-		n, err := strconv.Atoi(strings.TrimSuffix(v, "d"))
-		if err == nil && n >= 0 {
-			return now.AddDate(0, 0, -n), nil
-		}
-	}
-	if d, err := time.ParseDuration(v); err == nil {
-		return now.Add(-d), nil
-	}
-	if t, err := time.Parse(time.RFC3339, v); err == nil {
-		return t, nil
-	}
-	if t, err := time.ParseInLocation("2006-01-02", v, now.Location()); err == nil {
-		return t, nil
-	}
-	return time.Time{}, fmt.Errorf("invalid time %q", v)
 }
 
 func stateGroup(issue plane.Issue) string {
