@@ -1,6 +1,8 @@
-.PHONY: build test install clean fmt vet lint setup-hooks
+.PHONY: build test install clean fmt vet lint setup-hooks skill-zip
 
 BINARY_NAME=plane-cli
+SKILL_NAME=plane
+SKILL_ZIP=dist/$(SKILL_NAME)-skill.zip
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 DATE=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -52,3 +54,10 @@ setup-hooks:
 
 # Run all checks (fmt, vet, lint, test)
 check: fmt vet lint test
+
+# Package the agent skill directory as a distributable zip
+skill-zip:
+	@mkdir -p dist
+	rm -f $(SKILL_ZIP)
+	cd skills && zip -rq ../$(SKILL_ZIP) $(SKILL_NAME) -x '*.DS_Store' -x '__pycache__/*'
+	@echo "Built $(SKILL_ZIP)"
