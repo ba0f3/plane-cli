@@ -38,8 +38,8 @@ func eventsPath() (string, error) {
 
 // Check records a view for the key and reports whether the periodic hint should
 // be emitted. The hint fires on the Threshold-th view inside Window and at
-// most once per burst of views: a recorded warning suppresses the hint only
-// while an older view of the same burst is still inside the window.
+// most once per 5-minute window: once a warning has been recorded for the key
+// inside the window, further hints are suppressed until that window passes.
 func Check(workspace, project string, now time.Time) (bool, error) {
 	key := strings.TrimSpace(workspace) + "/" + strings.TrimSpace(project)
 	filePath, err := eventsPath()
@@ -59,7 +59,8 @@ func Check(workspace, project string, now time.Time) (bool, error) {
 		return false, err
 	}
 	cutoff := now.Add(-Window)
-	var views, warns []time.Time
+	var views int
+	var warned bool
 	for _, item := range events {
 		if item.Key != key {
 			continue
@@ -70,23 +71,13 @@ func Check(workspace, project string, now time.Time) (bool, error) {
 		}
 		switch item.Event {
 		case "view":
-			views = append(views, at)
+			views++
 		case "warn":
-			warns = append(warns, at)
+			warned = true
 		}
 	}
-	if len(views) < Threshold {
+	if views < Threshold || warned {
 		return false, nil
-	}
-	// An earlier warning only blocks the hint while an older view of the same
-	// burst is still inside the window; once that view expires the burst is
-	// over and the hint may fire again.
-	for _, warnedAt := range warns {
-		for _, viewedAt := range views {
-			if viewedAt.Before(warnedAt) {
-				return false, nil
-			}
-		}
 	}
 	if err := appendEvent(filePath, event{Key: key, Event: "warn", At: stamp}); err != nil {
 		return false, err

@@ -34,9 +34,24 @@ func TestCheckWarnsAtThresholdOncePerWindow(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, warn)
 
+	// The warning recorded at t=2min is still inside the 5-minute window that
+	// ends at t=6min, so the hint stays suppressed for that window.
 	warn, err = Check("ws", "p1", start.Add(6*time.Minute))
 	require.NoError(t, err)
+	assert.False(t, warn)
+
+	// Once the t=2min warning's window has fully passed (at t=7min the cutoff
+	// reaches 12:02, so that warning has expired), the hint fires again: the
+	// views at 3min, 6min and 7min are all inside the new window.
+	warn, err = Check("ws", "p1", start.Add(7*time.Minute))
+	require.NoError(t, err)
 	assert.True(t, warn)
+
+	// The warning just recorded at t=7min suppresses the hint for the rest of
+	// its own 5-minute window.
+	warn, err = Check("ws", "p1", start.Add(8*time.Minute))
+	require.NoError(t, err)
+	assert.False(t, warn)
 }
 
 func TestCheckIsolatesKeys(t *testing.T) {
