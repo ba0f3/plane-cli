@@ -1,9 +1,11 @@
 package inject
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func resetModuleFlags() {
@@ -58,6 +60,23 @@ func TestGenerateContentPointsToSnapshot(t *testing.T) {
 	assert.Contains(t, content, "### Reporting and bulk analysis")
 	assert.Contains(t, content, "plane-cli snapshot --workspace <slug> --out ./plane-snapshot.json -o json")
 	assert.Contains(t, content, "Do not run `issue list` followed by `issue view <id>` for every task")
+}
+
+func TestGenerateContentOrdersBulkAnalysisOverride(t *testing.T) {
+	resetModuleFlags()
+	t.Cleanup(resetModuleFlags)
+
+	content := generateContent()
+
+	issueIdx := strings.Index(content, "## Issue (aliases: i, issues, ticket)")
+	bulkIdx := strings.Index(content, "### Reporting and bulk analysis")
+	referenceIdx := strings.Index(content, "### Full Command Reference")
+
+	require.NotEqual(t, -1, issueIdx, "issue command help must be present")
+	require.NotEqual(t, -1, bulkIdx, "bulk analysis section must be present")
+	require.NotEqual(t, -1, referenceIdx, "full command reference section must be present")
+	assert.Less(t, issueIdx, bulkIdx, "bulk analysis section must follow the issue commands")
+	assert.Less(t, bulkIdx, referenceIdx, "bulk analysis section must precede the full command reference")
 }
 
 func TestGenerateContentAllIncludesModernCommandFamilies(t *testing.T) {

@@ -27,7 +27,7 @@ Record the workspace/project selection, people, reporting interval, timezone and
 
 ## 2. Choose the smallest sufficient data path
 
-In these examples, set `WS` to the requested workspace slug. Choose a row, rather than running every command.
+In these examples, set `WS` to the requested workspace slug and `PROJECT_ID` to a requested project UUID. Choose a row, rather than running every command.
 
 | Need | Command | Interpretation |
 | --- | --- | --- |
@@ -36,7 +36,7 @@ In these examples, set `WS` to the requested workspace slug. Choose a row, rathe
 | Quick project totals | `plane-cli --workspace "$WS" report summary -o json` | Snapshot totals with the caveats below |
 | Rough assignment distribution | `plane-cli --workspace "$WS" report workload --metric points --group-by project-assignee -o json` | Estimate/count distribution, not capacity utilization |
 | Recently updated items | `plane-cli --workspace "$WS" report activity --since 7d --limit 30 -o json` | Latest item snapshots, not an event or effort log |
-| Team comparison, closed-period reporting, label/product mix, deeper employee analysis | `plane-cli snapshot --workspace "$WS" --out "$PLANE_ANALYSIS_DIR/snapshot.json" -o json` | One shared raw dataset for all people, metrics and follow-up questions |
+| Team comparison, closed-period reporting, label/product mix, deeper employee analysis | `plane-cli snapshot --workspace "$WS" --only-project "$PROJECT_ID" --out "$PLANE_ANALYSIS_DIR/snapshot.json" -o json` | One shared raw dataset for all people, metrics and follow-up questions; repeat `--only-project` for each project in scope |
 
 Do not run `issue list` followed by `issue view` for every task. That pattern
 costs one CLI invocation and one agent turn per item and hits API rate limits.
@@ -53,23 +53,25 @@ Current behavior to account for, and recheck when the binary changes:
 
 ## 3. Collect one reusable snapshot
 
-Discover projects and people once per workspace. Keep only requested projects in `projects.json` and pass them to `snapshot` with `--only-project`. Use a fresh analysis directory for each acquisition.
+Discover projects and people once per workspace. Keep only requested projects in `projects.json`, then pass their UUIDs to `snapshot` with one `--only-project` flag each. Use a fresh analysis directory for each acquisition.
 
 ```bash
 plane-cli --workspace "$WS" project list -o json > "$PLANE_ANALYSIS_DIR/projects.json"
 plane-cli --workspace "$WS" workspace members --limit 0 -o json > "$PLANE_ANALYSIS_DIR/members.json"
 # For an ambiguous person, search once rather than guessing from a display name:
 plane-cli --workspace "$WS" workspace members --search 'person@example.com' --exact --limit 0 -o json
+# Take each requested project UUID from projects.json:
+PROJECT_ID="<requested-project-uuid>"
 ```
 
-For several workspaces, collect each requested workspace and combine their project arrays. Project rows contain `workspace`, `id` and `identifier`. Some CLI lists print a human message when empty, even in JSON mode. Verify an empty scope; do not turn non-JSON output or a failed command into zero work.
+For several workspaces, run `snapshot --all-workspaces` with an IAT to collect every visible workspace in one call. It cannot be combined with `--workspace`, so when the scope pins specific projects to specific workspaces, fall back to one `snapshot --workspace` run per requested workspace with `--only-project` and merge the project arrays. Project rows contain `workspace`, `id` and `identifier`. Some CLI lists print a human message when empty, even in JSON mode. Verify an empty scope; do not turn non-JSON output or a failed command into zero work.
 
 For complete work-item fields, use `snapshot` below. `raw GET` reaches the same collection endpoint, with paths relative to `/api/v1`, and preserves server fields, but **does not paginate**. There is no `raw --all` or `raw --cursor` flag.
 
-Run the following as one local execution, not one agent turn per page. One CLI call collects every selected project, and the snapshot file is written only after the whole collection succeeds.
+Run the following once: it collects every selected project in one CLI invocation, and the snapshot file is written only after the whole collection succeeds. Repeat `--only-project` for each project in scope.
 
 ```bash
-plane-cli snapshot --workspace "$WS" --out "$PLANE_ANALYSIS_DIR/snapshot.json" -o json
+plane-cli snapshot --workspace "$WS" --only-project "$PROJECT_ID" --out "$PLANE_ANALYSIS_DIR/snapshot.json" -o json
 ```
 
 `snapshot` walks cursor pagination for every selected project, preserves the
@@ -78,7 +80,7 @@ fetched/retained counts. Inspect one record before aggregating: state, assignee
 and label values can be UUID strings or expanded objects. Use
 `--all-workspaces` with an IAT, `--only-project` to narrow scope, and
 `--since` / `--until` / `--date-field` to reduce the local file; the applied
-filter is recorded in `scope`. A short page alone does not prove completeness —
+filter is recorded in `scope`. A short page alone does not prove completeness:
 check `coverage` and stop on API errors. Keep raw JSON local and use one
 Python/jq aggregation pass to emit compact tables and a shortlist of evidence
 IDs. Reuse this snapshot for alternate groupings and follow-up questions.
