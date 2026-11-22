@@ -2,11 +2,13 @@ package issue
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/ba0f3/plane-cli/internal/api"
 	"github.com/ba0f3/plane-cli/internal/config"
 	"github.com/ba0f3/plane-cli/internal/output"
+	"github.com/ba0f3/plane-cli/internal/viewhint"
 	"github.com/ba0f3/plane-cli/pkg/plane"
 	"github.com/spf13/cobra"
 )
@@ -208,6 +210,11 @@ func runView(cmd *cobra.Command, args []string) error {
 	projectID := config.Cfg.DefaultProject
 	if projectID == "" {
 		return fmt.Errorf("no project specified")
+	}
+
+	// Cache failures are ignored: the hint must never break issue view.
+	if warn, err := viewhint.Check(config.Cfg.DefaultWorkspace, projectID, time.Now()); err == nil && warn {
+		fmt.Fprintln(cmd.ErrOrStderr(), viewhint.Warning)
 	}
 
 	issueID := args[0]
