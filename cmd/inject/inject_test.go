@@ -49,6 +49,17 @@ func TestGenerateContentUsesBashFenceForIssueCommands(t *testing.T) {
 	assert.Contains(t, content, "## Issue (aliases: i, issues, ticket)\n```bash")
 }
 
+func TestGenerateContentPointsToSnapshot(t *testing.T) {
+	resetModuleFlags()
+	t.Cleanup(resetModuleFlags)
+
+	content := generateContent()
+
+	assert.Contains(t, content, "### Reporting and bulk analysis")
+	assert.Contains(t, content, "plane-cli snapshot --workspace <slug> --out ./plane-snapshot.json -o json")
+	assert.Contains(t, content, "Do not run `issue list` followed by `issue view <id>` for every task")
+}
+
 func TestGenerateContentAllIncludesModernCommandFamilies(t *testing.T) {
 	resetModuleFlags()
 	t.Cleanup(resetModuleFlags)

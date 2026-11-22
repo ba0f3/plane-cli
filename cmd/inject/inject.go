@@ -241,6 +241,19 @@ The Plane CLI provides command-line access to your Plane workspace for issue tra
 		content += withBashFence(contextcmd.GetExtendedCommands())
 	}
 
+	// Bulk reporting rule: override the per-item issue workflow for analysis requests.
+	content += `### Reporting and bulk analysis
+
+For workload, report, or analysis requests, collect one snapshot and calculate locally:
+
+` + "```" + `bash
+plane-cli snapshot --workspace <slug> --out ./plane-snapshot.json -o json
+` + "```" + `
+
+Do not run ` + "`issue list`" + ` followed by ` + "`issue view <id>`" + ` for every task. ` + "`snapshot`" + ` paginates the full work-item collection once, preserves raw fields, and writes bulk data to a file; stdout carries only a small coverage summary. Use ` + "`--all-workspaces`" + ` with an IAT, ` + "`--only-project`" + ` to narrow scope, and ` + "`--since`" + `/` + "`--until`" + `/` + "`--date-field`" + ` to reduce the local file when needed.
+
+`
+
 	// Keep the original sections for reference and tips
 	content += `### Full Command Reference
 
