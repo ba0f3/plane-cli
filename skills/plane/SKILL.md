@@ -74,6 +74,8 @@ Run the following once: it collects every selected project in one CLI invocation
 plane-cli snapshot --workspace "$WS" --only-project "$PROJECT_ID" --out "$PLANE_ANALYSIS_DIR/snapshot.json" -o json
 ```
 
+The snapshot file is one JSON object with a top-level `records[]` array, where each record carries `workspace`, `project_id`, `project_identifier` and `item` (the raw work-item object), plus top-level `coverage` and `scope`.
+
 `snapshot` walks cursor pagination for every selected project, preserves the
 server's work-item fields, deduplicates by item ID, and records `coverage` with
 fetched/retained counts. Inspect one record before aggregating: state, assignee

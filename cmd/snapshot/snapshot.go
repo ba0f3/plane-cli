@@ -82,7 +82,9 @@ func runSnapshot(cmd *cobra.Command, args []string) error {
 	} else {
 		scope.Workspace = config.Cfg.DefaultWorkspace
 	}
-	if len(scope.Projects) == 0 && strings.TrimSpace(config.Cfg.DefaultProject) != "" {
+	// The default project narrows a workspace-scoped run to one configured
+	// project, so it must not apply to an instance-wide collection.
+	if !allWorkspaces && len(scope.Projects) == 0 && strings.TrimSpace(config.Cfg.DefaultProject) != "" {
 		scope.Projects = []string{config.Cfg.DefaultProject}
 	}
 

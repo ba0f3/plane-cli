@@ -140,6 +140,41 @@ func TestRunSnapshotYAMLSummaryUsesSnakeCaseKeys(t *testing.T) {
 	assert.NotContains(t, out.String(), "records")
 }
 
+func TestRunSnapshotAllWorkspacesIgnoresDefaultProject(t *testing.T) {
+	originalCollect, originalQuiet, originalOut := collect, quiet, outPath
+	originalFormat, originalAll, originalProjects := config.Cfg.OutputFormat, allWorkspaces, onlyProjects
+	originalWorkspace := config.Cfg.DefaultWorkspace
+	originalDefaultProject := config.Cfg.DefaultProject
+	originalDateField := dateField
+	t.Cleanup(func() {
+		collect, quiet, outPath = originalCollect, originalQuiet, originalOut
+		config.Cfg.OutputFormat, allWorkspaces, onlyProjects = originalFormat, originalAll, originalProjects
+		config.Cfg.DefaultWorkspace = originalWorkspace
+		config.Cfg.DefaultProject = originalDefaultProject
+		dateField = originalDateField
+	})
+
+	dir := t.TempDir()
+	outPath = filepath.Join(dir, "snapshot.json")
+	quiet = true
+	config.Cfg.OutputFormat = "json"
+	config.Cfg.DefaultWorkspace = "ws"
+	config.Cfg.DefaultProject = "SOME-PROJECT"
+	collect = func(scope snap.Scope) (*snap.Snapshot, error) {
+		assert.True(t, scope.AllWorkspaces)
+		assert.Equal(t, "", scope.Workspace)
+		assert.Len(t, scope.Projects, 0)
+		return &snap.Snapshot{
+			StartedAt: "start", FinishedAt: "end",
+			Coverage: []snap.ProjectCoverage{}, Records: []snap.Record{},
+		}, nil
+	}
+	allWorkspaces, onlyProjects, dateField = true, nil, "updated"
+
+	cmd := &cobra.Command{Use: "snapshot"}
+	require.NoError(t, runSnapshot(cmd, nil))
+}
+
 func TestRunSnapshotCollectFailureWritesNoFile(t *testing.T) {
 	originalCollect, originalQuiet, originalOut := collect, quiet, outPath
 	originalFormat, originalAll, originalProjects := config.Cfg.OutputFormat, allWorkspaces, onlyProjects
