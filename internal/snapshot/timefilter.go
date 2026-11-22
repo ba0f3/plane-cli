@@ -43,23 +43,29 @@ func FilterRecords(records []Record, scope Scope, now time.Time) ([]Record, erro
 		return nil, fmt.Errorf("invalid date field %q: use created or updated", scope.DateField)
 	}
 
-	if scope.Since == "" && scope.Until == "" {
+	// Trim so a whitespace-only value means "no filter", like cmd/report.
+	sinceRaw := strings.TrimSpace(scope.Since)
+	untilRaw := strings.TrimSpace(scope.Until)
+	if sinceRaw == "" && untilRaw == "" {
 		return records, nil
 	}
 
 	var since, until time.Time
 	var err error
-	if scope.Since != "" {
-		since, err = timeutil.ParseTime(scope.Since, now)
+	if sinceRaw != "" {
+		since, err = timeutil.ParseTime(sinceRaw, now)
 		if err != nil {
 			return nil, fmt.Errorf("invalid --since: %w", err)
 		}
 	}
-	if scope.Until != "" {
-		until, err = timeutil.ParseTime(scope.Until, now)
+	if untilRaw != "" {
+		until, err = timeutil.ParseTime(untilRaw, now)
 		if err != nil {
 			return nil, fmt.Errorf("invalid --until: %w", err)
 		}
+	}
+	if !since.IsZero() && !until.IsZero() && since.After(until) {
+		return nil, fmt.Errorf("invalid snapshot window: --since is after --until")
 	}
 
 	kept := make([]Record, 0, len(records))

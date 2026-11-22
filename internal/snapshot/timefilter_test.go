@@ -67,6 +67,23 @@ func TestFilterRecordsRejectsInvalidInputs(t *testing.T) {
 	assert.ErrorContains(t, err, "since")
 }
 
+func TestFilterRecordsRejectsReversedWindow(t *testing.T) {
+	records := []Record{recordWithTimes(t, "2026-11-01T00:00:00Z", "2026-11-01T00:00:00Z")}
+	scope := Scope{Since: "2026-09-27T12:00:00Z", Until: "2026-09-26T12:00:00Z"}
+
+	_, err := FilterRecords(records, scope, time.Now())
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "--since is after --until")
+}
+
+func TestFilterRecordsTreatsWhitespaceOnlyRangeAsNoFilter(t *testing.T) {
+	records := []Record{recordWithTimes(t, "2026-11-01T00:00:00Z", "2026-11-01T00:00:00Z")}
+
+	got, err := FilterRecords(records, Scope{Since: "  ", Until: "\t"}, time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, records, got)
+}
+
 func timeFromRecord(t *testing.T, record Record, field string) string {
 	t.Helper()
 	var item map[string]string

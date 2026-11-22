@@ -280,6 +280,36 @@ func TestCollectBuildsSnapshot(t *testing.T) {
 	assert.NotEmpty(t, snapshot.FinishedAt)
 }
 
+func TestCollectEmitsEmptyCoverageArray(t *testing.T) {
+	t.Setenv("PLANE_API_KEY", "test-key")
+	originalHost, originalWorkspace := config.Cfg.APIHost, config.Cfg.DefaultWorkspace
+	t.Cleanup(func() {
+		config.Cfg.APIHost, config.Cfg.DefaultWorkspace = originalHost, originalWorkspace
+	})
+
+	_, server := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/workspaces/ws/projects/":
+			writeProjects(t, w)
+		case "/api/v1/workspaces/ws/projects/p1/work-items/":
+			fmt.Fprint(w, `{"results":[],"next_page_results":false}`)
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	config.Cfg.APIHost, config.Cfg.DefaultWorkspace = server.URL, ""
+
+	snapshot, err := Collect(Scope{Workspace: "ws", Expand: "assignees,state,labels"})
+	require.NoError(t, err)
+	require.NotNil(t, snapshot.Coverage)
+	assert.Empty(t, snapshot.Coverage)
+
+	encoded, err := json.Marshal(snapshot)
+	require.NoError(t, err)
+	assert.Contains(t, string(encoded), `"coverage":[]`)
+	assert.NotContains(t, string(encoded), `"coverage":null`)
+}
+
 func TestCollectRejectsUnmatchedSelector(t *testing.T) {
 	t.Setenv("PLANE_API_KEY", "test-key")
 	originalHost, originalWorkspace := config.Cfg.APIHost, config.Cfg.DefaultWorkspace

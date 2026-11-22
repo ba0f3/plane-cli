@@ -55,16 +55,20 @@ func init() {
 }
 
 func validate(cmd *cobra.Command) error {
-	if allWorkspaces && cmd.InheritedFlags().Changed("workspace") {
-		return fmt.Errorf("--all-workspaces cannot be combined with --workspace")
+	// The root PreRun copies --workspace into config.Cfg.DefaultWorkspace, so a
+	// configured workspace is just as much a selection as an explicit flag.
+	if allWorkspaces && (cmd.InheritedFlags().Changed("workspace") ||
+		strings.TrimSpace(config.Cfg.DefaultWorkspace) != "") {
+		return fmt.Errorf("a workspace is already selected (--workspace or config); unset it or drop --all-workspaces")
 	}
 
 	// Normalize once so the command and the collector share the same shape.
 	raw := dateField
-	dateField = strings.ToLower(strings.TrimSpace(dateField))
-	if dateField != "" && dateField != "created" && dateField != "updated" {
+	normalized := strings.ToLower(strings.TrimSpace(dateField))
+	if normalized != "" && normalized != "created" && normalized != "updated" {
 		return fmt.Errorf("invalid date field %q: use created or updated", raw)
 	}
+	dateField = normalized
 	return nil
 }
 
@@ -82,9 +86,11 @@ func runSnapshot(cmd *cobra.Command, args []string) error {
 	} else {
 		scope.Workspace = config.Cfg.DefaultWorkspace
 	}
-	// The default project narrows a workspace-scoped run to one configured
-	// project, so it must not apply to an instance-wide collection.
-	if !allWorkspaces && len(scope.Projects) == 0 && strings.TrimSpace(config.Cfg.DefaultProject) != "" {
+	// The configured default project must never silently narrow a snapshot:
+	// only an explicit global --project is honoured, so omitting it means
+	// "every project in scope".
+	if cmd.InheritedFlags().Changed("project") && len(scope.Projects) == 0 &&
+		strings.TrimSpace(config.Cfg.DefaultProject) != "" {
 		scope.Projects = []string{config.Cfg.DefaultProject}
 	}
 

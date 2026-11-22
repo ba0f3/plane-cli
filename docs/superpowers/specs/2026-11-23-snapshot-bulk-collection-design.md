@@ -137,10 +137,16 @@ Scope resolution reuses existing patterns from `report.collect()`:
   workspaces; otherwise the workspace comes from `--workspace` or config.
 - Projects come from `ListProjects()` on a workspace-scoped client and are
   filtered by the repeatable `--only-project` selectors (ID, identifier, or
-  name, case-insensitive, matching `report.projectMatches`). If none are given,
-  the global `--project` / `config.Cfg.DefaultProject` is used as one selector.
-- `--all-workspaces` is mutually exclusive with an explicit global
-  `--workspace`.
+  name, case-insensitive, matching `report.projectMatches`). If none are
+  given, the global `--project` is used as one selector **only when it was
+  explicitly passed on the command line**. The configured
+  `config.Cfg.DefaultProject` (config file / `PLANE_PROJECT`) is deliberately
+  **not** inherited by `snapshot`: a default project must never silently
+  narrow a workspace-scoped snapshot to one project, so omitting `--project`
+  means "every project in scope".
+- `--all-workspaces` is mutually exclusive with a selected workspace, i.e.
+  with an explicit global `--workspace` **or** a configured workspace
+  (`config.Cfg.DefaultWorkspace` / `PLANE_WORKSPACE`).
 
 ### `cmd/snapshot/snapshot.go` (new command)
 
@@ -151,7 +157,7 @@ Registered in `cmd/root.go`. Flags:
 | (global) `--workspace WS` | Workspace slug; overrides config. Do not redefine |
 | `--all-workspaces` | Collect every visible workspace (IAT) |
 | `--only-project SELECTOR` | Repeatable project filter: ID, identifier, or name |
-| (global) `--project` | Fallback single selector when `--only-project` is empty |
+| (global) `--project` | Fallback single selector when `--only-project` is empty. Honoured only when explicitly passed; the configured default project is ignored |
 | `--expand LIST` | Default `assignees,state,labels` |
 | `--out PATH` | Default `./plane-snapshot.json` |
 | `--since`, `--until`, `--date-field` | Local record filter; same parser as `report` |
@@ -193,17 +199,25 @@ task.
 
 ### Repetitive `issue view` hint
 
-A new `internal/viewhint` package records one event per `issue view` invocation
-in an append-only JSONL file under `os.UserCacheDir()/plane-cli/view-hints.jsonl`.
-Each line carries a key (`workspace/project`), an event (`view` or `warn`), and
-a UTC timestamp. The package returns whether to emit a warning: warn at the
-**3rd view within 5 minutes** for a key, and at most **once per 5-minute
-window** (a `warn` event suppresses further warnings until the window passes).
-The cache file contains no credentials; failures to read or write it are
-best-effort and must never fail the `issue view` command.
+A new `internal/viewhint` package records one event per successful `issue view`
+invocation in an append-only JSONL file under
+`os.UserCacheDir()/plane-cli/view-hints.jsonl`. Each line carries a key
+(`workspace/project`), an event (`view` or `warn`), and a UTC timestamp. The
+package returns whether to emit a warning: warn at the **3rd view within 5
+minutes** for a key, and at most **once per 5-minute window** (a `warn` event
+suppresses further warnings until the window passes). The cache file contains
+no credentials; failures to read or write it are best-effort and must never
+fail the `issue view` command.
+
+The cache file is bounded: once it grows past 500 lines it is rewritten
+atomically (temp file + rename in the same directory) with only the events
+still inside the current 5-minute window. `warn` events are kept so the
+once-per-window suppression survives the rewrite. Pruning is best-effort.
 
 `runView` in `cmd/issue/issue.go` calls the checker with the configured
-workspace/project and writes the fixed warning to `cmd.ErrOrStderr()`:
+workspace/project **after** the issue was resolved successfully and before
+the formatter prints, so failed views do not count towards the threshold, and
+writes the fixed warning to `cmd.ErrOrStderr()`:
 
 ```
 plane-cli: repeated issue view calls detected (3 in 5m); use plane-cli snapshot to collect all items in one invocation instead of viewing each task.

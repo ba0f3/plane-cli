@@ -212,11 +212,6 @@ func runView(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no project specified")
 	}
 
-	// Cache failures are ignored: the hint must never break issue view.
-	if warn, err := viewhint.Check(config.Cfg.DefaultWorkspace, projectID, time.Now()); err == nil && warn {
-		fmt.Fprintln(cmd.ErrOrStderr(), viewhint.Warning)
-	}
-
 	issueID := args[0]
 
 	client, err := api.NewClient()
@@ -227,6 +222,12 @@ func runView(cmd *cobra.Command, args []string) error {
 	issue, err := resolveIssue(client, projectID, issueID)
 	if err != nil {
 		return err
+	}
+
+	// Cache failures are ignored: the hint must never break issue view. Only
+	// successful views count towards the hint threshold.
+	if warn, err := viewhint.Check(config.Cfg.DefaultWorkspace, projectID, time.Now()); err == nil && warn {
+		fmt.Fprintln(cmd.ErrOrStderr(), viewhint.Warning)
 	}
 
 	formatter := output.NewFormatter(config.Cfg.OutputFormat, false)

@@ -279,7 +279,7 @@ func Collect(scope Scope) (*Snapshot, error) {
 	}
 
 	byID := make(map[string]Record)
-	var coverage []ProjectCoverage
+	coverage := make([]ProjectCoverage, 0)
 	for _, ref := range refs {
 		cov, err := collectProject(client, ref, scope.Expand, byID, time.Sleep)
 		if err != nil {

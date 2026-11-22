@@ -2,6 +2,8 @@ package viewhint
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,4 +77,67 @@ func TestCheckReportsCacheFailure(t *testing.T) {
 	warn, err := Check("ws", "p1", time.Now())
 	assert.Error(t, err)
 	assert.False(t, warn)
+}
+
+func TestCheckKeepsCacheFileBounded(t *testing.T) {
+	useTempCache(t)
+	start := time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)
+
+	// Drive far more view calls than the cache may hold.
+	for i := 0; i < maxEvents*3; i++ {
+		_, err := Check("ws", "p1", start.Add(time.Duration(i)*time.Second))
+		require.NoError(t, err)
+	}
+
+	path, err := eventsPath()
+	require.NoError(t, err)
+	lines := countLines(t, path)
+	assert.LessOrEqual(t, lines, maxEvents, "cache file must stay bounded")
+	assert.Greater(t, lines, 0, "cache file must not be emptied")
+}
+
+func TestCheckPruneKeepsRecentWarningSuppression(t *testing.T) {
+	useTempCache(t)
+	start := time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)
+
+	// Two views are below the threshold; the third one fires the warning.
+	for i := 0; i < Threshold-1; i++ {
+		warn, err := Check("ws", "p1", start.Add(time.Duration(i)*time.Millisecond))
+		require.NoError(t, err)
+		assert.False(t, warn)
+	}
+	warn, err := Check("ws", "p1", start.Add(2*time.Millisecond))
+	require.NoError(t, err)
+	assert.True(t, warn)
+
+	// Keep adding views so the file crosses the prune threshold. All calls stay
+	// inside the same 5-minute window as the recorded warning.
+	for i := 0; i < maxEvents*2; i++ {
+		_, err := Check("ws", "p1", start.Add(time.Duration(10+i)*time.Millisecond))
+		require.NoError(t, err)
+	}
+
+	path, err := eventsPath()
+	require.NoError(t, err)
+	assert.LessOrEqual(t, countLines(t, path), maxEvents)
+
+	// The warning recorded inside the current window must still suppress a
+	// repeated hint after the prune.
+	warn, err = Check("ws", "p1", start.Add(time.Duration(20+maxEvents*2)*time.Millisecond))
+	require.NoError(t, err)
+	assert.False(t, warn)
+}
+
+func countLines(t *testing.T, path string) int {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return 0
+	}
+	require.NoError(t, err)
+	trimmed := strings.TrimRight(string(data), "\n")
+	if trimmed == "" {
+		return 0
+	}
+	return strings.Count(trimmed, "\n") + 1
 }

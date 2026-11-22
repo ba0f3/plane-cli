@@ -15,7 +15,8 @@
 - Cursor pagination: `per_page=100`, `expand=assignees,state,labels`, 10,000-page safety cap, missing/repeated cursor is an error.
 - Errors: 401/403 fail immediately; 429 bounded backoff (max 3 retries, max 30s delay); no partial snapshot or summary on failure.
 - `--workspace` and `--project` are **persistent root flags**; do not redefine them. Use global `--workspace`/`--project` and a new repeatable `--only-project`.
-- `--all-workspaces` is mutually exclusive with an explicit global `--workspace`.
+- `--all-workspaces` is mutually exclusive with a selected workspace: an explicit global `--workspace` **or** a configured workspace (`config.Cfg.DefaultWorkspace` / `PLANE_WORKSPACE`).
+- `snapshot` never inherits `config.Cfg.DefaultProject`: the configured default project must not silently narrow a workspace-scoped snapshot. The global `--project` is used as a single selector only when it was explicitly passed on the command line; omitting it means "every project in scope".
 - Bulk records go only to the output file; stdout carries a small summary only.
 - View hint: 3 `issue view` calls within 5 minutes per workspace/project; warn once per window; stderr only; cache errors are non-fatal; no disable flag.
 - Standard Go formatting, ASCII source, `TestXxx` tests alongside code, short imperative commit subjects.
@@ -855,6 +856,20 @@ git commit -m "feat: add cursor-based snapshot collector"
 **Interfaces:**
 - Consumes: `snapshot.Collect`, `snapshot.Scope`, `snapshot.Snapshot`, `snapshot.Summary` (Tasks 1-2).
 - Produces: `snapshotcmd.SnapshotCmd`, `runSnapshot(cmd, args)`, `validate(cmd)`, `writeSnapshot(path, s)`, `printSummary(cmd, path, s)`, overridable `collect = snap.Collect` for tests.
+
+**Flag table (scope decisions are deliberate; do not restore the config fallback):**
+
+| Flag | Meaning |
+| --- | --- |
+| (global) `--workspace WS` | Workspace slug; overrides config. Do not redefine |
+| `--all-workspaces` | Collect every visible workspace (IAT). Rejected when a workspace is selected (flag or config) |
+| `--only-project SELECTOR` | Repeatable project filter: ID, identifier, or name |
+| (global) `--project` | Single selector when `--only-project` is empty, honoured **only when explicitly passed**; the configured default project is never inherited |
+| `--expand LIST` | Default `assignees,state,labels` |
+| `--out PATH` | Default `./plane-snapshot.json` |
+| `--since`, `--until`, `--date-field` | Local record filter; same parser as `report` |
+| `-o, --output json\|yaml` | Format of the small stdout summary only |
+| `--quiet` | Suppress stdout summary |
 
 - [ ] **Step 1: Write the failing tests**
 

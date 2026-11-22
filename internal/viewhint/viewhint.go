@@ -18,6 +18,10 @@ const (
 	Window = 5 * time.Minute
 	// Warning is the fixed hint written to stderr when the hint fires.
 	Warning = "plane-cli: repeated issue view calls detected (3 in 5m); use plane-cli snapshot to collect all items in one invocation instead of viewing each task."
+	// maxEvents bounds the cache file. Once the file grows past this many
+	// lines it is rewritten with only the events still inside Window, so the
+	// file cannot grow without limit.
+	maxEvents = 500
 )
 
 var cacheDir = os.UserCacheDir
@@ -58,6 +62,12 @@ func Check(workspace, project string, now time.Time) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+
+	// Bound the cache file: once it grows past maxEvents, rewrite it with only
+	// the events still inside Window. Pruning is best-effort; a failure must
+	// never break issue view.
+	pruneEvents(filePath, events, now)
+
 	cutoff := now.Add(-Window)
 	var views int
 	var warned bool
@@ -118,4 +128,78 @@ func readEvents(filePath string) ([]event, error) {
 		}
 	}
 	return events, scanner.Err()
+}
+
+// pruneEvents keeps the cache file bounded. It only rewrites the file when it
+// has grown past maxEvents. The rewritten file keeps the events still inside
+// Window (warn events are always kept so suppression survives the rewrite)
+// and, if that is still too many, the most recent ones up to maxEvents.
+// Failures are ignored: pruning is best-effort and must never break
+// issue view.
+func pruneEvents(filePath string, events []event, now time.Time) {
+	if len(events) <= maxEvents {
+		return
+	}
+	cutoff := now.Add(-Window)
+	kept := make([]event, 0, len(events))
+	for _, item := range events {
+		at, err := time.Parse(time.RFC3339Nano, item.At)
+		if err != nil {
+			continue
+		}
+		if !at.After(cutoff) {
+			continue
+		}
+		kept = append(kept, item)
+	}
+	// The file is append-only in timestamp order, so the newest events are at
+	// the end. Keep the tail up to the budget and re-attach any warn events
+	// that fell outside it, so the once-per-window suppression is preserved
+	// without letting the file grow past maxEvents.
+	if len(kept) > maxEvents {
+		tail := kept[len(kept)-maxEvents:]
+		warns := make([]event, 0, len(kept))
+		for _, item := range kept[:len(kept)-maxEvents] {
+			if item.Event == "warn" {
+				warns = append(warns, item)
+			}
+		}
+		// Drop the oldest warn events if they do not fit next to the tail.
+		if len(warns)+len(tail) > maxEvents {
+			warns = warns[len(warns)+len(tail)-maxEvents:]
+		}
+		kept = append(warns, tail...)
+	}
+	if err := rewriteEvents(filePath, kept); err != nil {
+		return
+	}
+}
+
+// rewriteEvents replaces the cache file with the given events using a
+// temporary file in the same directory followed by a rename, so a reader
+// never observes a partially written file.
+func rewriteEvents(filePath string, events []event) error {
+	dir := filepath.Dir(filePath)
+	tmp, err := os.CreateTemp(dir, ".view-hints-*.jsonl")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+
+	encoder := json.NewEncoder(tmp)
+	for _, item := range events {
+		if err := encoder.Encode(item); err != nil {
+			_ = tmp.Close()
+			return err
+		}
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, filePath)
 }
