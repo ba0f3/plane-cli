@@ -17,6 +17,7 @@
 - `--workspace` and `--project` are **persistent root flags**; do not redefine them. Use global `--workspace`/`--project` and a new repeatable `--only-project`.
 - `--all-workspaces` is mutually exclusive with an explicit global `--workspace`.
 - Bulk records go only to the output file; stdout carries a small summary only.
+- View hint: 3 `issue view` calls within 5 minutes per workspace/project; warn once per window; stderr only; cache errors are non-fatal; no disable flag.
 - Standard Go formatting, ASCII source, `TestXxx` tests alongside code, short imperative commit subjects.
 
 ---
@@ -24,17 +25,56 @@
 ### Task 1: Snapshot types and local time filter
 
 **Files:**
+- Create: `internal/timeutil/timeutil.go`
+- Create: `internal/timeutil/timeutil_test.go`
+- Modify: `cmd/report/report.go` (remove local `parseTime`, use `timeutil.ParseTime`)
 - Create: `internal/snapshot/types.go`
 - Create: `internal/snapshot/timefilter.go`
 - Create: `internal/snapshot/timefilter_test.go`
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `snapshot.Record`, `snapshot.ProjectCoverage`, `snapshot.Scope`, `snapshot.Snapshot`, `snapshot.Summary`, `snapshot.FilterRecords(records []Record, scope Scope, now time.Time) ([]Record, error)`.
+- Produces: `timeutil.ParseTime(value string, now time.Time) (time.Time, error)`; `snapshot.Record`, `snapshot.ProjectCoverage`, `snapshot.Scope`, `snapshot.Snapshot`, `snapshot.Summary`, `snapshot.FilterRecords(records []Record, scope Scope, now time.Time) ([]Record, error)`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
-Create `internal/snapshot/timefilter_test.go`:
+Create `internal/timeutil/timeutil_test.go`:
+
+```go
+package timeutil
+
+import (
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestParseTime(t *testing.T) {
+	now := time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"7d", "2026-11-16T12:00:00Z"},
+		{"24h", "2026-11-22T12:00:00Z"},
+		{"2026-11-01T00:00:00Z", "2026-11-01T00:00:00Z"},
+		{"2026-11-01", "2026-11-01T00:00:00Z"},
+	}
+	for _, tt := range tests {
+		got, err := ParseTime(tt.input, now)
+		require.NoError(t, err, tt.input)
+		assert.Equal(t, tt.want, got.UTC().Format(time.RFC3339), tt.input)
+	}
+
+	_, err := ParseTime("nonsense", now)
+	assert.Error(t, err)
+}
+```
+
+Create `internal/snapshot/timefilter_test.go` (without a duplicate parse test):
 
 ```go
 package snapshot
@@ -55,28 +95,6 @@ func recordWithTimes(t *testing.T, created, updated string) Record {
 	})
 	require.NoError(t, err)
 	return Record{Workspace: "ws", ProjectID: "p1", ProjectIdentifier: "GAME", Item: item}
-}
-
-func TestParseTime(t *testing.T) {
-	now := time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)
-
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"7d", "2026-11-16T12:00:00Z"},
-		{"24h", "2026-11-22T12:00:00Z"},
-		{"2026-11-01T00:00:00Z", "2026-11-01T00:00:00Z"},
-		{"2026-11-01", "2026-11-01T00:00:00Z"},
-	}
-	for _, tt := range tests {
-		got, err := parseTime(tt.input, now)
-		require.NoError(t, err, tt.input)
-		assert.Equal(t, tt.want, got.UTC().Format(time.RFC3339), tt.input)
-	}
-
-	_, err := parseTime("nonsense", now)
-	assert.Error(t, err)
 }
 
 func TestFilterRecordsWithoutRangeKeepsEverything(t *testing.T) {
@@ -136,12 +154,57 @@ func timeFromRecord(t *testing.T, record Record, field string) string {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Run: `go test ./internal/snapshot -run TestFilterRecords -v`
-Expected: build failure — package `snapshot` has no non-test files defining `FilterRecords`, `Scope`, or `Record`.
+Run: `go test ./internal/timeutil ./internal/snapshot -v`
+Expected: build failure — `internal/timeutil` has no `ParseTime`, and package `snapshot` has no non-test files defining `FilterRecords`, `Scope`, or `Record`.
 
 - [ ] **Step 3: Write minimal implementation**
+
+Create `internal/timeutil/timeutil.go`:
+
+```go
+package timeutil
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// ParseTime accepts Nd days, a Go duration, RFC3339, or a date-only value in
+// now.Location(). It is shared by report and snapshot so their windows cannot
+// drift apart.
+func ParseTime(value string, now time.Time) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if strings.HasSuffix(value, "d") {
+		days, err := strconv.Atoi(strings.TrimSuffix(value, "d"))
+		if err == nil && days >= 0 {
+			return now.AddDate(0, 0, -days), nil
+		}
+	}
+	if duration, err := time.ParseDuration(value); err == nil {
+		return now.Add(-duration), nil
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed, nil
+	}
+	if parsed, err := time.ParseInLocation("2006-01-02", value, now.Location()); err == nil {
+		return parsed, nil
+	}
+	return time.Time{}, fmt.Errorf("invalid time %q", value)
+}
+```
+
+Modify `cmd/report/report.go`: add the import `"github.com/ba0f3/plane-cli/internal/timeutil"`, delete the entire local `func parseTime(v string, now time.Time) (time.Time, error) { ... }`, and replace its two call sites inside `issueInWindow` with `timeutil.ParseTime(...)`:
+
+```go
+		since, err := timeutil.ParseTime(reportSince, time.Now())
+```
+```go
+		until, err := timeutil.ParseTime(reportUntil, time.Now())
+```
 
 Create `internal/snapshot/types.go`:
 
@@ -204,32 +267,11 @@ package snapshot
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
-)
 
-// parseTime mirrors cmd/report.parseTime: Nd days, Go duration, RFC3339, and
-// date-only values interpreted in now.Location().
-func parseTime(value string, now time.Time) (time.Time, error) {
-	value = strings.TrimSpace(value)
-	if strings.HasSuffix(value, "d") {
-		days, err := strconv.Atoi(strings.TrimSuffix(value, "d"))
-		if err == nil && days >= 0 {
-			return now.AddDate(0, 0, -days), nil
-		}
-	}
-	if duration, err := time.ParseDuration(value); err == nil {
-		return now.Add(-duration), nil
-	}
-	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
-		return parsed, nil
-	}
-	if parsed, err := time.ParseInLocation("2006-01-02", value, now.Location()); err == nil {
-		return parsed, nil
-	}
-	return time.Time{}, fmt.Errorf("invalid time %q", value)
-}
+	"github.com/ba0f3/plane-cli/internal/timeutil"
+)
 
 func itemTime(item json.RawMessage, field string) (time.Time, bool) {
 	var stamps struct {
@@ -272,13 +314,13 @@ func FilterRecords(records []Record, scope Scope, now time.Time) ([]Record, erro
 	var since, until time.Time
 	var err error
 	if scope.Since != "" {
-		since, err = parseTime(scope.Since, now)
+		since, err = timeutil.ParseTime(scope.Since, now)
 		if err != nil {
 			return nil, fmt.Errorf("invalid --since: %w", err)
 		}
 	}
 	if scope.Until != "" {
-		until, err = parseTime(scope.Until, now)
+		until, err = timeutil.ParseTime(scope.Until, now)
 		if err != nil {
 			return nil, fmt.Errorf("invalid --until: %w", err)
 		}
@@ -302,16 +344,16 @@ func FilterRecords(records []Record, scope Scope, now time.Time) ([]Record, erro
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run tests to verify they pass**
 
-Run: `go test ./internal/snapshot -v`
-Expected: PASS — all `TestParseTime` and `TestFilterRecords*` tests pass.
+Run: `go test ./internal/timeutil ./internal/snapshot ./cmd/report -v`
+Expected: PASS — `TestParseTime`, all `TestFilterRecords*` tests, and existing report tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add internal/snapshot/types.go internal/snapshot/timefilter.go internal/snapshot/timefilter_test.go
-git commit -m "feat: add snapshot types and local time filter"
+git add internal/timeutil/timeutil.go internal/timeutil/timeutil_test.go cmd/report/report.go internal/snapshot/types.go internal/snapshot/timefilter.go internal/snapshot/timefilter_test.go
+git commit -m "feat: add shared time parser and snapshot types"
 ```
 
 ---
@@ -1270,7 +1312,262 @@ git commit -m "docs: steer agents to one-shot snapshot collection"
 
 ---
 
-### Task 5: Full verification and skill package
+### Task 5: Repetitive `issue view` hint
+
+**Files:**
+- Create: `internal/viewhint/viewhint.go`
+- Create: `internal/viewhint/viewhint_test.go`
+- Modify: `cmd/issue/issue.go` (import + hook in `runView`)
+
+**Interfaces:**
+- Consumes: `config.Cfg.DefaultWorkspace`, `config.Cfg.DefaultProject`.
+- Produces: `viewhint.Check(workspace, project string, now time.Time) (bool, error)`, `viewhint.Warning` constant. `runView` calls it and writes to `cmd.ErrOrStderr()`.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `internal/viewhint/viewhint_test.go`:
+
+```go
+package viewhint
+
+import (
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func useTempCache(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	original := cacheDir
+	cacheDir = func() (string, error) { return dir, nil }
+	t.Cleanup(func() { cacheDir = original })
+}
+
+func TestCheckWarnsAtThresholdOncePerWindow(t *testing.T) {
+	useTempCache(t)
+	start := time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)
+
+	for i := 0; i < Threshold-1; i++ {
+		warn, err := Check("ws", "p1", start.Add(time.Duration(i)*time.Minute))
+		require.NoError(t, err)
+		assert.False(t, warn)
+	}
+	warn, err := Check("ws", "p1", start.Add(2*time.Minute))
+	require.NoError(t, err)
+	assert.True(t, warn)
+
+	warn, err = Check("ws", "p1", start.Add(3*time.Minute))
+	require.NoError(t, err)
+	assert.False(t, warn)
+
+	warn, err = Check("ws", "p1", start.Add(6*time.Minute))
+	require.NoError(t, err)
+	assert.True(t, warn)
+}
+
+func TestCheckIsolatesKeys(t *testing.T) {
+	useTempCache(t)
+	start := time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)
+
+	for i := 0; i < Threshold; i++ {
+		_, err := Check("ws", "p1", start.Add(time.Duration(i)*time.Minute))
+		require.NoError(t, err)
+	}
+	warn, err := Check("ws", "p2", start.Add(3*time.Minute))
+	require.NoError(t, err)
+	assert.False(t, warn)
+}
+
+func TestCheckReportsCacheFailure(t *testing.T) {
+	original := cacheDir
+	cacheDir = func() (string, error) { return "", fmt.Errorf("no cache dir") }
+	t.Cleanup(func() { cacheDir = original })
+
+	warn, err := Check("ws", "p1", time.Now())
+	assert.Error(t, err)
+	assert.False(t, warn)
+}
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `go test ./internal/viewhint -v`
+Expected: build failure — `viewhint` package has no `Check`, `Threshold`, or `Warning`.
+
+- [ ] **Step 3: Write minimal implementation**
+
+Create `internal/viewhint/viewhint.go`:
+
+```go
+package viewhint
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+const (
+	// Threshold is the number of issue view calls within Window that triggers
+	// the one-shot hint for a workspace/project key.
+	Threshold = 3
+	Window    = 5 * time.Minute
+	Warning   = "plane-cli: repeated issue view calls detected (3 in 5m); use plane-cli snapshot to collect all items in one invocation instead of viewing each task."
+)
+
+var cacheDir = os.UserCacheDir
+
+type event struct {
+	Key   string `json:"key"`
+	Event string `json:"event"`
+	At    string `json:"at"`
+}
+
+func eventsPath() (string, error) {
+	dir, err := cacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "plane-cli", "view-hints.jsonl"), nil
+}
+
+// Check records a view for the key and reports whether the periodic hint should
+// be emitted. It writes at most one warn event per Window per key.
+func Check(workspace, project string, now time.Time) (bool, error) {
+	key := strings.TrimSpace(workspace) + "/" + strings.TrimSpace(project)
+	filePath, err := eventsPath()
+	if err != nil {
+		return false, err
+	}
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o700); err != nil {
+		return false, err
+	}
+	stamp := now.UTC().Format(time.RFC3339Nano)
+	if err := appendEvent(filePath, event{Key: key, Event: "view", At: stamp}); err != nil {
+		return false, err
+	}
+
+	events, err := readEvents(filePath)
+	if err != nil {
+		return false, err
+	}
+	cutoff := now.Add(-Window)
+	views, warned := 0, false
+	for _, item := range events {
+		if item.Key != key {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339Nano, item.At)
+		if err != nil || at.Before(cutoff) {
+			continue
+		}
+		switch item.Event {
+		case "view":
+			views++
+		case "warn":
+			warned = true
+		}
+	}
+	if views < Threshold || warned {
+		return false, nil
+	}
+	if err := appendEvent(filePath, event{Key: key, Event: "warn", At: stamp}); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func appendEvent(filePath string, item event) error {
+	data, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }()
+	_, err = fmt.Fprintln(file, string(data))
+	return err
+}
+
+func readEvents(filePath string) ([]event, error) {
+	file, err := os.Open(filePath)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+
+	var events []event
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		var item event
+		if err := json.Unmarshal(scanner.Bytes(), &item); err == nil {
+			events = append(events, item)
+		}
+	}
+	return events, scanner.Err()
+}
+```
+
+- [ ] **Step 4: Hook into `runView`**
+
+In `cmd/issue/issue.go`, add imports `"time"` and `"github.com/ba0f3/plane-cli/internal/viewhint"`. Replace the start of `runView`:
+
+```go
+func runView(cmd *cobra.Command, args []string) error {
+	projectID := config.Cfg.DefaultProject
+	if projectID == "" {
+		return fmt.Errorf("no project specified")
+	}
+
+	issueID := args[0]
+```
+
+with:
+
+```go
+func runView(cmd *cobra.Command, args []string) error {
+	projectID := config.Cfg.DefaultProject
+	if projectID == "" {
+		return fmt.Errorf("no project specified")
+	}
+
+	if warn, err := viewhint.Check(config.Cfg.DefaultWorkspace, projectID, time.Now()); err == nil && warn {
+		fmt.Fprintln(cmd.ErrOrStderr(), viewhint.Warning)
+	}
+
+	issueID := args[0]
+```
+
+Cache errors are intentionally ignored: the hint must never break `issue view`. The warning goes to stderr, so stdout JSON stays clean.
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `go test ./internal/viewhint ./cmd/issue -v`
+Expected: PASS — threshold, once-per-window, key isolation, and cache-failure tests pass; existing issue tests pass.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add internal/viewhint/viewhint.go internal/viewhint/viewhint_test.go cmd/issue/issue.go
+git commit -m "feat: hint at snapshot after repeated issue views"
+```
+
+---
+
+### Task 6: Full verification and skill package
 
 **Files:** no source changes; verification only.
 
@@ -1325,6 +1622,7 @@ Expected: clean working tree (the `dist/` and `plane-cli` build artifacts are ig
 
 ## Self-review notes
 
-- Spec coverage: problem/goal map to Tasks 1-4; reliability and schema validation to Task 2; file-only bulk output and small summary to Task 3; three instruction surfaces to Task 4; verification to Task 5.
+- Spec coverage: problem/goal map to Tasks 1-4; reliability and schema validation to Task 2; file-only bulk output and small summary to Task 3; three instruction surfaces to Task 4; view hint to Task 5; verification to Task 6.
 - Flag constraint discovered during planning is recorded in the spec amendment (commit `876af2a`) and in Tasks 2-3.
+- The `parseTime` duplication the task-review rubric would flag is removed by extracting `internal/timeutil` and migrating `cmd/report` in Task 1.
 - No placeholders: every code step includes complete source and exact run commands.

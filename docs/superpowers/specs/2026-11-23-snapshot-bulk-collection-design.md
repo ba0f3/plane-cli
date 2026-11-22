@@ -35,7 +35,11 @@ command instead of per-item reads.
 - **Time range**: supported as a *local* filter before writing the snapshot
   (`--since`, `--until`, `--date-field created|updated`). No server-side date
   filter: it is unverified on this endpoint and would risk losing unchanged
-  open work.
+  open work. The parser lives in `internal/timeutil` and is shared with
+  `cmd/report` rather than copied.
+- **Per-item view hint**: `issue view` itself emits a stderr hint when an agent
+  repeatedly views items, so the N+1 pattern is discouraged even when the agent
+  never reads the instruction surfaces.
 - **Implementation**: a native Go collector plus a top-level `snapshot`
   command. No Python collector script, no `report export` variant (which would
   inherit the 500-item ceiling and the typed projection).
@@ -107,12 +111,13 @@ Collection algorithm, per selected project:
 4. Continue while `next_page_results` is true, using `next_cursor`. A missing,
    empty, or repeated cursor is an error. Safety cap: 10,000 pages.
 5. After all projects succeed, apply the optional local date filter to
-   `records`. `internal/snapshot/timefilter.go` mirrors the window semantics of
-   `cmd/report.parseTime` (inclusive bounds; date-only `until` means midnight at
-   the start of that date; `Nd`, Go duration, and RFC3339 inputs accepted) and
-   is locked by table-driven tests. Extracting a shared time helper for all
-   commands is explicitly out of scope. Coverage reports both fetched (`items`)
-   and `retained` counts per project.
+   `records`. `internal/snapshot/timefilter.go` calls `timeutil.ParseTime`, the
+   shared parser extracted from `cmd/report` (inclusive bounds; date-only
+   `until` means midnight at the start of that date; `Nd`, Go duration, and
+   RFC3339 inputs accepted). `cmd/report` is migrated to the same helper so the
+   two commands cannot drift; `cmd/digest` keeps its existing parser and is out
+   of scope. Coverage reports both fetched (`items`) and `retained` counts per
+   project.
 6. Return the snapshot only if every project succeeded. Never return partial
    data as a complete snapshot.
 
@@ -186,12 +191,39 @@ task.
      this reference is generated from the command tree, the new command also
      appears automatically.
 
+### Repetitive `issue view` hint
+
+A new `internal/viewhint` package records one event per `issue view` invocation
+in an append-only JSONL file under `os.UserCacheDir()/plane-cli/view-hints.jsonl`.
+Each line carries a key (`workspace/project`), an event (`view` or `warn`), and
+a UTC timestamp. The package returns whether to emit a warning: warn at the
+**3rd view within 5 minutes** for a key, and at most **once per 5-minute
+window** (a `warn` event suppresses further warnings until the window passes).
+The cache file contains no credentials; failures to read or write it are
+best-effort and must never fail the `issue view` command.
+
+`runView` in `cmd/issue/issue.go` calls the checker with the configured
+workspace/project and writes the fixed warning to `cmd.ErrOrStderr()`:
+
+```
+plane-cli: repeated issue view calls detected (3 in 5m); use plane-cli snapshot to collect all items in one invocation instead of viewing each task.
+```
+
+The warning goes to stderr only, so JSON/table output on stdout stays clean.
+There is no disable flag or environment variable. Tests inject the cache
+directory through a package variable and control time explicitly; they cover
+threshold, once-per-window suppression, key isolation, and best-effort failure.
+
 ### Testing
 
 - `internal/snapshot/collector_test.go` with `httptest`: multi-page cursor walk,
   dedupe, malformed pagination schema, 401 failure, 429 retry, local time
   filter, coverage counts, scope resolution across one and several workspaces,
   project selector matching.
+- `internal/timeutil/timeutil_test.go`: parsing table (Nd, duration, RFC3339,
+  date-only, invalid).
+- `internal/viewhint/viewhint_test.go`: threshold, once-per-window suppression,
+  key isolation, cache failure is non-fatal.
 - `cmd/snapshot/snapshot_test.go`: mutually exclusive flags, output file
   creation, summary format, no bulk records on stdout.
 - Verify with `go test ./...` and `make check`. Live API tests are not required
