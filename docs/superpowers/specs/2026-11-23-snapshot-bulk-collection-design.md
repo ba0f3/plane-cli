@@ -27,8 +27,11 @@ command instead of per-item reads.
 - **Layer**: change both the CLI and the agent instructions.
 - **Detail level**: full raw work-item fields with `expand=assignees,state,labels`.
   Do not pass records through the `plane.Issue` presentation struct.
-- **Scope**: default to one workspace, with `--all-workspaces` for IAT and
-  repeatable `--project` selection.
+- **Scope**: default to one workspace (via the existing global `--workspace`),
+  with `--all-workspaces` for IAT and repeatable `--only-project` selection.
+  The existing global `--project` is also honoured as a single selector;
+  `--only-project` cannot be named `--project` because that name is already a
+  persistent root flag.
 - **Time range**: supported as a *local* filter before writing the snapshot
   (`--since`, `--until`, `--date-field created|updated`). No server-side date
   filter: it is unverified on this endpoint and would risk losing unchanged
@@ -128,9 +131,11 @@ Scope resolution reuses existing patterns from `report.collect()`:
 - `--all-workspaces` uses `api.NewClientNoWorkspace()` and enumerates
   workspaces; otherwise the workspace comes from `--workspace` or config.
 - Projects come from `ListProjects()` on a workspace-scoped client and are
-  filtered by repeatable `--project` selector (ID, identifier, or name,
-  case-insensitive, matching `report.projectMatches`).
-- `--all-workspaces` and `--workspace` are mutually exclusive.
+  filtered by the repeatable `--only-project` selectors (ID, identifier, or
+  name, case-insensitive, matching `report.projectMatches`). If none are given,
+  the global `--project` / `config.Cfg.DefaultProject` is used as one selector.
+- `--all-workspaces` is mutually exclusive with an explicit global
+  `--workspace`.
 
 ### `cmd/snapshot/snapshot.go` (new command)
 
@@ -138,9 +143,10 @@ Registered in `cmd/root.go`. Flags:
 
 | Flag | Meaning |
 | --- | --- |
-| `--workspace WS` | Workspace slug; overrides config |
+| (global) `--workspace WS` | Workspace slug; overrides config. Do not redefine |
 | `--all-workspaces` | Collect every visible workspace (IAT) |
-| `--project SELECTOR` | Repeatable project filter: ID, identifier, or name |
+| `--only-project SELECTOR` | Repeatable project filter: ID, identifier, or name |
+| (global) `--project` | Fallback single selector when `--only-project` is empty |
 | `--expand LIST` | Default `assignees,state,labels` |
 | `--out PATH` | Default `./plane-snapshot.json` |
 | `--since`, `--until`, `--date-field` | Local record filter; same parser as `report` |
