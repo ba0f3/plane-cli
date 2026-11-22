@@ -98,6 +98,8 @@ plane-cli snapshot --workspace <slug> --out ./plane-snapshot.json -o json
 
 Do not run `issue list` followed by `issue view <id>` for every task. `snapshot` paginates the full work-item collection once, preserves raw fields, and writes bulk data to a file; stdout carries only a small coverage summary. Use `--all-workspaces` with an IAT, `--only-project` to narrow scope, and `--since`/`--until`/`--date-field` to reduce the local file when needed.
 
+`--all-workspaces` is rejected when a workspace is already selected, whether it comes from `--workspace`, `PLANE_WORKSPACE`, or `default_workspace` in the config file. Clear the selection with `env -u PLANE_WORKSPACE` (or unset `default_workspace` in the config file), or drop `--all-workspaces` and pass `--workspace` explicitly. A configured default project is not inherited either: omit `--project` to collect every project in scope, and narrow with `--project` or `--only-project`.
+
 ### Full Command Reference
 
 For the authoritative self-describing agent documentation generated from the installed binary:

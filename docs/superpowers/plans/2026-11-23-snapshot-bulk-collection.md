@@ -862,7 +862,7 @@ git commit -m "feat: add cursor-based snapshot collector"
 | Flag | Meaning |
 | --- | --- |
 | (global) `--workspace WS` | Workspace slug; overrides config. Do not redefine |
-| `--all-workspaces` | Collect every visible workspace (IAT). Rejected when a workspace is selected (flag or config) |
+| `--all-workspaces` | Collect every visible workspace (IAT). Rejected when a workspace is selected by flag, env, or config |
 | `--only-project SELECTOR` | Repeatable project filter: ID, identifier, or name |
 | (global) `--project` | Single selector when `--only-project` is empty, honoured **only when explicitly passed**; the configured default project is never inherited |
 | `--expand LIST` | Default `assignees,state,labels` |
@@ -1337,6 +1337,8 @@ git commit -m "docs: steer agents to one-shot snapshot collection"
 **Interfaces:**
 - Consumes: `config.Cfg.DefaultWorkspace`, `config.Cfg.DefaultProject`.
 - Produces: `viewhint.Check(workspace, project string, now time.Time) (bool, error)`, `viewhint.Warning` constant. `runView` calls it and writes to `cmd.ErrOrStderr()`.
+- The cache file is bounded: once it holds `maxEvents` (500) lines it is rewritten atomically (temp file + rename in the same directory) with only the events still inside the current 5-minute window, keeping room for one more append so the file never exceeds 500 lines. `warn` events are always kept so the once-per-window suppression survives the rewrite. Pruning is best-effort and must never break `issue view`.
+- Tests inject the cache directory through the exported `viewhint.CacheDir` variable and restore it afterwards, so the cache file can be redirected into a temporary directory.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1357,9 +1359,9 @@ import (
 func useTempCache(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
-	original := cacheDir
-	cacheDir = func() (string, error) { return dir, nil }
-	t.Cleanup(func() { cacheDir = original })
+	original := CacheDir
+	CacheDir = func() (string, error) { return dir, nil }
+	t.Cleanup(func() { CacheDir = original })
 }
 
 func TestCheckWarnsAtThresholdOncePerWindow(t *testing.T) {
@@ -1398,9 +1400,9 @@ func TestCheckIsolatesKeys(t *testing.T) {
 }
 
 func TestCheckReportsCacheFailure(t *testing.T) {
-	original := cacheDir
-	cacheDir = func() (string, error) { return "", fmt.Errorf("no cache dir") }
-	t.Cleanup(func() { cacheDir = original })
+	original := CacheDir
+	CacheDir = func() (string, error) { return "", fmt.Errorf("no cache dir") }
+	t.Cleanup(func() { CacheDir = original })
 
 	warn, err := Check("ws", "p1", time.Now())
 	assert.Error(t, err)
@@ -1550,7 +1552,7 @@ func runView(cmd *cobra.Command, args []string) error {
 	issueID := args[0]
 ```
 
-with:
+with the following, where the hint check runs **after** `resolveIssue` succeeded and before the formatter prints:
 
 ```go
 func runView(cmd *cobra.Command, args []string) error {
@@ -1559,14 +1561,30 @@ func runView(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no project specified")
 	}
 
+	issueID := args[0]
+
+	client, err := api.NewClient()
+	if err != nil {
+		return err
+	}
+
+	issue, err := resolveIssue(client, projectID, issueID)
+	if err != nil {
+		return err
+	}
+
+	// Cache failures are ignored: the hint must never break issue view. Only
+	// successful views count towards the hint threshold.
 	if warn, err := viewhint.Check(config.Cfg.DefaultWorkspace, projectID, time.Now()); err == nil && warn {
 		fmt.Fprintln(cmd.ErrOrStderr(), viewhint.Warning)
 	}
 
-	issueID := args[0]
+	formatter := output.NewFormatter(config.Cfg.OutputFormat, false)
+	return formatter.Print(issue)
+}
 ```
 
-Cache errors are intentionally ignored: the hint must never break `issue view`. The warning goes to stderr, so stdout JSON stays clean.
+Cache errors are intentionally ignored: the hint must never break `issue view`. The warning goes to stderr, so stdout JSON stays clean. Because the check runs only after the issue was resolved, a failed view never records a hint event and never counts towards the threshold.
 
 - [ ] **Step 5: Run tests to verify they pass**
 

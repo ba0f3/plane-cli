@@ -14,9 +14,9 @@ import (
 func useTempCache(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
-	original := cacheDir
-	cacheDir = func() (string, error) { return dir, nil }
-	t.Cleanup(func() { cacheDir = original })
+	original := CacheDir
+	CacheDir = func() (string, error) { return dir, nil }
+	t.Cleanup(func() { CacheDir = original })
 }
 
 func TestCheckWarnsAtThresholdOncePerWindow(t *testing.T) {
@@ -70,9 +70,9 @@ func TestCheckIsolatesKeys(t *testing.T) {
 }
 
 func TestCheckReportsCacheFailure(t *testing.T) {
-	original := cacheDir
-	cacheDir = func() (string, error) { return "", fmt.Errorf("no cache dir") }
-	t.Cleanup(func() { cacheDir = original })
+	original := CacheDir
+	CacheDir = func() (string, error) { return "", fmt.Errorf("no cache dir") }
+	t.Cleanup(func() { CacheDir = original })
 
 	warn, err := Check("ws", "p1", time.Now())
 	assert.Error(t, err)
@@ -94,6 +94,30 @@ func TestCheckKeepsCacheFileBounded(t *testing.T) {
 	lines := countLines(t, path)
 	assert.LessOrEqual(t, lines, maxEvents, "cache file must stay bounded")
 	assert.Greater(t, lines, 0, "cache file must not be emptied")
+}
+
+func TestCheckKeepsCacheFileBoundedAtWarnBoundary(t *testing.T) {
+	useTempCache(t)
+	start := time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)
+
+	path, err := eventsPath()
+	require.NoError(t, err)
+
+	// Fill the file right up to the bound so the next calls straddle the
+	// boundary where a warn event is appended after the prune. The file must
+	// never hold more than maxEvents lines, not even transiently.
+	for i := 0; i < maxEvents-1; i++ {
+		_, err := Check("ws", "p1", start.Add(time.Duration(i)*time.Millisecond))
+		require.NoError(t, err)
+	}
+	require.LessOrEqual(t, countLines(t, path), maxEvents)
+
+	for i := 0; i < 10; i++ {
+		_, err := Check("ws", "p1", start.Add(time.Duration(maxEvents+i)*time.Millisecond))
+		require.NoError(t, err)
+		assert.LessOrEqual(t, countLines(t, path), maxEvents,
+			"cache file must stay bounded even when a warn event is appended")
+	}
 }
 
 func TestCheckPruneKeepsRecentWarningSuppression(t *testing.T) {

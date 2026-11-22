@@ -155,7 +155,7 @@ Registered in `cmd/root.go`. Flags:
 | Flag | Meaning |
 | --- | --- |
 | (global) `--workspace WS` | Workspace slug; overrides config. Do not redefine |
-| `--all-workspaces` | Collect every visible workspace (IAT) |
+| `--all-workspaces` | Collect every visible workspace (IAT); rejected when a workspace is selected by flag, env, or config |
 | `--only-project SELECTOR` | Repeatable project filter: ID, identifier, or name |
 | (global) `--project` | Fallback single selector when `--only-project` is empty. Honoured only when explicitly passed; the configured default project is ignored |
 | `--expand LIST` | Default `assignees,state,labels` |

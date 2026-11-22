@@ -77,13 +77,30 @@ func TestValidateAcceptsAllWorkspacesWithoutWorkspace(t *testing.T) {
 }
 
 func TestValidateRejectsInvalidDateField(t *testing.T) {
-	dateField = "completed"
+	// A mixed-case value is used on purpose: the normalization lowercases the
+	// value, so only a mixed-case input can detect the global being mutated
+	// before the rejection.
+	dateField = "COMPLETED"
 	t.Cleanup(func() { dateField = "updated" })
 
 	err := validate(&cobra.Command{Use: "snapshot"})
 	assert.ErrorContains(t, err, "date field")
 	// The rejected value must not be normalized into the global.
-	assert.Equal(t, "completed", dateField)
+	assert.Equal(t, "COMPLETED", dateField)
+}
+
+func TestSnapshotHelpDocumentsScopeRules(t *testing.T) {
+	// The flag help and the long description must state the scope rules that
+	// validate enforces.
+	flagHelp := SnapshotCmd.Flags().Lookup("all-workspaces").Usage
+	assert.Contains(t, flagHelp, "rejected when a workspace is selected by flag, env, or config")
+
+	assert.Contains(t, SnapshotCmd.Long, "--all-workspaces is rejected when a workspace is already selected")
+	assert.Contains(t, SnapshotCmd.Long, "PLANE_WORKSPACE")
+	assert.Contains(t, SnapshotCmd.Long, "default_workspace")
+	assert.Contains(t, SnapshotCmd.Long, "env -u PLANE_WORKSPACE")
+	assert.Contains(t, SnapshotCmd.Long, "default project is not inherited")
+	assert.Contains(t, SnapshotCmd.Long, "--project")
 }
 
 func TestWriteSnapshotCreatesAtomicFile(t *testing.T) {
@@ -188,7 +205,7 @@ func TestRunSnapshotYAMLSummaryUsesSnakeCaseKeys(t *testing.T) {
 	assert.NotContains(t, out.String(), "records")
 }
 
-func TestRunSnapshotAllWorkspacesIgnoresDefaultProject(t *testing.T) {
+func TestRunSnapshotAllWorkspacesHasNoProjectFallback(t *testing.T) {
 	originalCollect, originalQuiet, originalOut := collect, quiet, outPath
 	originalFormat, originalAll, originalProjects := config.Cfg.OutputFormat, allWorkspaces, onlyProjects
 	originalWorkspace := config.Cfg.DefaultWorkspace

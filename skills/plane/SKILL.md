@@ -66,6 +66,8 @@ PROJECT_ID="<requested-project-uuid>"
 
 For several workspaces, run `snapshot --all-workspaces` with an IAT to collect every visible workspace in one call. It cannot be combined with `--workspace`, so when the scope pins specific projects to specific workspaces, fall back to one `snapshot --workspace` run per requested workspace with `--only-project` and merge the project arrays. Project rows contain `workspace`, `id` and `identifier`. Some CLI lists print a human message when empty, even in JSON mode. Verify an empty scope; do not turn non-JSON output or a failed command into zero work.
 
+`--all-workspaces` is rejected when a workspace is already selected, whether that selection comes from `--workspace`, from the `PLANE_WORKSPACE` environment variable, or from `default_workspace` in the config file. Clear the selection with `env -u PLANE_WORKSPACE` (or unset `default_workspace` in the config file), or drop `--all-workspaces` and pass `--workspace` explicitly. A configured default project is not inherited either: omit `--project` to collect every project in scope, and narrow with `--project` or `--only-project`.
+
 For complete work-item fields, use `snapshot` below. `raw GET` reaches the same collection endpoint, with paths relative to `/api/v1`, and preserves server fields, but **does not paginate**. There is no `raw --all` or `raw --cursor` flag.
 
 Run the following once: it collects every selected project in one CLI invocation, and the snapshot file is written only after the whole collection succeeds. Repeat `--only-project` for each project in scope.

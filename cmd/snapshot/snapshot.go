@@ -37,6 +37,16 @@ server's raw fields, writes the bulk data to --out, and prints only a small
 coverage summary to stdout. Use one snapshot for a report and calculate locally
 instead of calling issue view for each task.
 
+Scope rules:
+  --all-workspaces is rejected when a workspace is already selected, whether it
+  comes from --workspace, PLANE_WORKSPACE, or default_workspace in the config
+  file. Clear it (env -u PLANE_WORKSPACE, or unset default_workspace) or drop
+  --all-workspaces.
+
+  The configured default project is not inherited: omitting --project collects
+  every project in scope. Pass --project (or --only-project) to narrow the
+  snapshot to specific projects.
+
 If the collection fails, no new snapshot is written and any pre-existing --out
 file is left untouched, so check the exit status before trusting that file.`,
 	Args: cobra.NoArgs,
@@ -44,7 +54,7 @@ file is left untouched, so check the exit status before trusting that file.`,
 }
 
 func init() {
-	SnapshotCmd.Flags().BoolVar(&allWorkspaces, "all-workspaces", false, "Collect every visible workspace (IAT)")
+	SnapshotCmd.Flags().BoolVar(&allWorkspaces, "all-workspaces", false, "Collect every visible workspace (IAT); rejected when a workspace is selected by flag, env, or config")
 	SnapshotCmd.Flags().StringArrayVar(&onlyProjects, "only-project", nil, "Project ID, identifier, or name (repeatable)")
 	SnapshotCmd.Flags().StringVar(&expand, "expand", "assignees,state,labels", "Comma-separated work-item expansions")
 	SnapshotCmd.Flags().StringVar(&outPath, "out", "./plane-snapshot.json", "Path for the bulk snapshot JSON")

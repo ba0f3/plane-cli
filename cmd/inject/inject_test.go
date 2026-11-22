@@ -62,6 +62,19 @@ func TestGenerateContentPointsToSnapshot(t *testing.T) {
 	assert.Contains(t, content, "Do not run `issue list` followed by `issue view <id>` for every task")
 }
 
+func TestGenerateContentDocumentsAllWorkspacesConflict(t *testing.T) {
+	resetModuleFlags()
+	t.Cleanup(resetModuleFlags)
+
+	content := generateContent()
+
+	assert.Contains(t, content, "`--all-workspaces` is rejected when a workspace is already selected")
+	assert.Contains(t, content, "`PLANE_WORKSPACE`")
+	assert.Contains(t, content, "`default_workspace`")
+	assert.Contains(t, content, "env -u PLANE_WORKSPACE")
+	assert.Contains(t, content, "A configured default project is not inherited")
+}
+
 func TestGenerateContentOrdersBulkAnalysisOverride(t *testing.T) {
 	resetModuleFlags()
 	t.Cleanup(resetModuleFlags)
