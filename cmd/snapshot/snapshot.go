@@ -1,7 +1,6 @@
 package snapshot
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,7 +11,6 @@ import (
 	"github.com/ba0f3/plane-cli/internal/output"
 	snap "github.com/ba0f3/plane-cli/internal/snapshot"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -37,7 +35,10 @@ var SnapshotCmd = &cobra.Command{
 The command paginates the work-items endpoint once per project, preserves the
 server's raw fields, writes the bulk data to --out, and prints only a small
 coverage summary to stdout. Use one snapshot for a report and calculate locally
-instead of calling issue view for each task.`,
+instead of calling issue view for each task.
+
+If the collection fails, no new snapshot is written and any pre-existing --out
+file is left untouched, so check the exit status before trusting that file.`,
 	Args: cobra.NoArgs,
 	RunE: runSnapshot,
 }
@@ -57,9 +58,12 @@ func validate(cmd *cobra.Command) error {
 	if allWorkspaces && cmd.InheritedFlags().Changed("workspace") {
 		return fmt.Errorf("--all-workspaces cannot be combined with --workspace")
 	}
-	field := strings.ToLower(strings.TrimSpace(dateField))
-	if field != "" && field != "created" && field != "updated" {
-		return fmt.Errorf("invalid date field %q: use created or updated", dateField)
+
+	// Normalize once so the command and the collector share the same shape.
+	raw := dateField
+	dateField = strings.ToLower(strings.TrimSpace(dateField))
+	if dateField != "" && dateField != "created" && dateField != "updated" {
+		return fmt.Errorf("invalid date field %q: use created or updated", raw)
 	}
 	return nil
 }
@@ -116,6 +120,10 @@ func writeSnapshot(path string, snapshot *snap.Snapshot) error {
 		_ = tmp.Close()
 		return fmt.Errorf("write snapshot: %w", err)
 	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync snapshot: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close snapshot: %w", err)
 	}
@@ -131,26 +139,5 @@ func printSummary(cmd *cobra.Command, path string, snapshot *snap.Snapshot) erro
 		UniqueItems: len(snapshot.Records), Coverage: snapshot.Coverage,
 	}
 
-	var buf bytes.Buffer
-	switch output.NormalizeFormat(config.Cfg.OutputFormat) {
-	case "json":
-		encoder := json.NewEncoder(&buf)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(summary); err != nil {
-			return err
-		}
-	case "yaml":
-		encoder := yaml.NewEncoder(&buf)
-		if err := encoder.Encode(summary); err != nil {
-			return err
-		}
-		if err := encoder.Close(); err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("unsupported summary format %q", config.Cfg.OutputFormat)
-	}
-
-	_, err := cmd.OutOrStdout().Write(buf.Bytes())
-	return err
+	return output.NewFormatter(config.Cfg.OutputFormat, false).Fprint(cmd.OutOrStdout(), summary)
 }

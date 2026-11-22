@@ -1,6 +1,7 @@
 package output
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"testing"
@@ -79,6 +80,30 @@ func TestFormatterPrintRejectsTable(t *testing.T) {
 	err := formatter.Print(plane.Issue{Name: "Probe"})
 	require.Error(t, err)
 	assert.EqualError(t, err, `invalid output format "table": table output has been removed; supported formats are json, yaml`)
+}
+
+func TestFormatterFprintWritesToProvidedWriter(t *testing.T) {
+	formatter := NewFormatter("yaml", false)
+
+	var buf bytes.Buffer
+	require.NoError(t, formatter.Fprint(&buf, plane.Issue{
+		Name:            "Probe",
+		DescriptionHTML: "<p>Hello <strong>world</strong></p>",
+	}))
+
+	assert.Contains(t, buf.String(), "name: Probe")
+	assert.Contains(t, buf.String(), "description_markdown: Hello **world**")
+	assert.NotContains(t, buf.String(), "description_html")
+}
+
+func TestFormatterFprintRejectsUnsupportedFormat(t *testing.T) {
+	formatter := NewFormatter("table", false)
+
+	var buf bytes.Buffer
+	err := formatter.Fprint(&buf, plane.Issue{Name: "Probe"})
+	require.Error(t, err)
+	assert.EqualError(t, err, `invalid output format "table": table output has been removed; supported formats are json, yaml`)
+	assert.Empty(t, buf.String())
 }
 
 func TestValidateFormat(t *testing.T) {
