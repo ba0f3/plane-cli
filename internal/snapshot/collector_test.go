@@ -107,9 +107,9 @@ func TestCollectProjectWalksCursorAndDedupes(t *testing.T) {
 		requests++
 		switch r.URL.Query().Get("cursor") {
 		case "":
-			fmt.Fprintf(w, `{"results":[%s],"next_page_results":true,"next_cursor":"c1"}`, pageItem("a"))
+			_, _ = fmt.Fprintf(w, `{"results":[%s],"next_page_results":true,"next_cursor":"c1"}`, pageItem("a"))
 		case "c1":
-			fmt.Fprintf(w, `{"results":[%s,%s],"next_page_results":false}`, pageItem("a"), pageItem("b"))
+			_, _ = fmt.Fprintf(w, `{"results":[%s,%s],"next_page_results":false}`, pageItem("a"), pageItem("b"))
 		default:
 			t.Fatal("unexpected cursor")
 		}
@@ -128,7 +128,7 @@ func TestCollectProjectWalksCursorAndDedupes(t *testing.T) {
 
 func TestCollectProjectRejectsMalformedPagination(t *testing.T) {
 	client, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `{"results":[%s]}`, pageItem("a"))
+		_, _ = fmt.Fprintf(w, `{"results":[%s]}`, pageItem("a"))
 	}))
 
 	_, err := collectProject(client, projectRef{Workspace: "ws", ID: "p1"}, "expand", map[string]Record{}, func(time.Duration) {})
@@ -137,7 +137,7 @@ func TestCollectProjectRejectsMalformedPagination(t *testing.T) {
 
 func TestCollectProjectRejectsRepeatedCursor(t *testing.T) {
 	client, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `{"results":[%s],"next_page_results":true,"next_cursor":"c1"}`, pageItem("a"))
+		_, _ = fmt.Fprintf(w, `{"results":[%s],"next_page_results":true,"next_cursor":"c1"}`, pageItem("a"))
 	}))
 
 	_, err := collectProject(client, projectRef{Workspace: "ws", ID: "p1"}, "expand", map[string]Record{}, func(time.Duration) {})
@@ -154,7 +154,7 @@ func TestFetchPageRetries429AndRespectsRetryAfter(t *testing.T) {
 			w.WriteHeader(http.StatusTooManyRequests)
 			return
 		}
-		fmt.Fprintf(w, `{"results":[],"next_page_results":false}`)
+		_, _ = fmt.Fprintf(w, `{"results":[],"next_page_results":false}`)
 	}))
 
 	_, err := fetchPage(client, projectRef{Workspace: "ws", ID: "p1"}, "expand", "",
@@ -169,7 +169,7 @@ func TestFetchPageRetries429AndRespectsRetryAfter(t *testing.T) {
 
 func TestFetchPageRejectsMissingResults(t *testing.T) {
 	client, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"next_page_results":false}`)
+		_, _ = fmt.Fprint(w, `{"next_page_results":false}`)
 	}))
 
 	_, err := fetchPage(client, projectRef{Workspace: "ws", ID: "p1"}, "expand", "", func(time.Duration) {})
@@ -178,7 +178,7 @@ func TestFetchPageRejectsMissingResults(t *testing.T) {
 
 func TestFetchPageRejectsNullResults(t *testing.T) {
 	client, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"results":null,"next_page_results":false}`)
+		_, _ = fmt.Fprint(w, `{"results":null,"next_page_results":false}`)
 	}))
 
 	_, err := fetchPage(client, projectRef{Workspace: "ws", ID: "p1"}, "expand", "", func(time.Duration) {})
@@ -234,7 +234,7 @@ func TestResolveProjectsRetriesDiscovery429(t *testing.T) {
 func TestResolveProjectsReportsTokenScopeOn401(t *testing.T) {
 	client, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, `{"error":"denied"}`)
+		_, _ = fmt.Fprint(w, `{"error":"denied"}`)
 	}))
 
 	_, err := resolveProjects(Scope{Workspace: "ws"}, client, func(time.Duration) {})
@@ -245,7 +245,7 @@ func TestResolveProjectsReportsTokenScopeOn401(t *testing.T) {
 func TestFetchPageFailsOn401(t *testing.T) {
 	client, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, `{"error":"denied"}`)
+		_, _ = fmt.Fprint(w, `{"error":"denied"}`)
 	}))
 
 	_, err := fetchPage(client, projectRef{Workspace: "ws", ID: "p1"}, "expand", "", func(time.Duration) {})
@@ -264,7 +264,7 @@ func TestCollectBuildsSnapshot(t *testing.T) {
 		case "/api/v1/workspaces/ws/projects/":
 			writeProjects(t, w, map[string]string{"id": "p1", "identifier": "GAME"})
 		case "/api/v1/workspaces/ws/projects/p1/work-items/":
-			fmt.Fprintf(w, `{"results":[%s,%s],"next_page_results":false}`, pageItem("a"), pageItem("b"))
+			_, _ = fmt.Fprintf(w, `{"results":[%s,%s],"next_page_results":false}`, pageItem("a"), pageItem("b"))
 		default:
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
@@ -292,7 +292,7 @@ func TestCollectEmitsEmptyCoverageArray(t *testing.T) {
 		case "/api/v1/workspaces/ws/projects/":
 			writeProjects(t, w)
 		case "/api/v1/workspaces/ws/projects/p1/work-items/":
-			fmt.Fprint(w, `{"results":[],"next_page_results":false}`)
+			_, _ = fmt.Fprint(w, `{"results":[],"next_page_results":false}`)
 		default:
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}

@@ -227,7 +227,7 @@ func runView(cmd *cobra.Command, args []string) error {
 	// Cache failures are ignored: the hint must never break issue view. Only
 	// successful views count towards the hint threshold.
 	if warn, err := viewhint.Check(config.Cfg.DefaultWorkspace, projectID, time.Now()); err == nil && warn {
-		fmt.Fprintln(cmd.ErrOrStderr(), viewhint.Warning)
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), viewhint.Warning)
 	}
 
 	formatter := output.NewFormatter(config.Cfg.OutputFormat, false)
