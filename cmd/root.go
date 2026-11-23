@@ -19,6 +19,7 @@ import (
 	"github.com/ba0f3/plane-cli/cmd/project"
 	"github.com/ba0f3/plane-cli/cmd/raw"
 	"github.com/ba0f3/plane-cli/cmd/report"
+	snapshotcmd "github.com/ba0f3/plane-cli/cmd/snapshot"
 	"github.com/ba0f3/plane-cli/cmd/state"
 	issuetype "github.com/ba0f3/plane-cli/cmd/type"
 	"github.com/ba0f3/plane-cli/cmd/wiki"
@@ -118,6 +119,7 @@ func init() {
 	rootCmd.AddCommand(workspace.WorkspaceCmd)
 	rootCmd.AddCommand(project.ProjectCmd)
 	rootCmd.AddCommand(report.ReportCmd)
+	rootCmd.AddCommand(snapshotcmd.SnapshotCmd)
 	rootCmd.AddCommand(digest.DigestCmd)
 	rootCmd.AddCommand(wiki.WikiCmd)
 	rootCmd.AddCommand(raw.RawCmd)

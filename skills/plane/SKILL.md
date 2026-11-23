@@ -27,7 +27,7 @@ Record the workspace/project selection, people, reporting interval, timezone and
 
 ## 2. Choose the smallest sufficient data path
 
-In these examples, set `WS` to the requested workspace slug. Choose a row, rather than running every command.
+In these examples, set `WS` to the requested workspace slug and `PROJECT_ID` to a requested project UUID. Choose a row, rather than running every command.
 
 | Need | Command | Interpretation |
 | --- | --- | --- |
@@ -36,7 +36,10 @@ In these examples, set `WS` to the requested workspace slug. Choose a row, rathe
 | Quick project totals | `plane-cli --workspace "$WS" report summary -o json` | Snapshot totals with the caveats below |
 | Rough assignment distribution | `plane-cli --workspace "$WS" report workload --metric points --group-by project-assignee -o json` | Estimate/count distribution, not capacity utilization |
 | Recently updated items | `plane-cli --workspace "$WS" report activity --since 7d --limit 30 -o json` | Latest item snapshots, not an event or effort log |
-| Team comparison, closed-period reporting, label/product mix, deeper employee analysis | Bulk snapshot in section 3 | One shared dataset for all people, metrics and follow-up questions |
+| Team comparison, closed-period reporting, label/product mix, deeper employee analysis | `plane-cli snapshot --workspace "$WS" --only-project "$PROJECT_ID" --out "$PLANE_ANALYSIS_DIR/snapshot.json" -o json` | One shared raw dataset for all people, metrics and follow-up questions; repeat `--only-project` for each project in scope |
+
+Do not run `issue list` followed by `issue view` for every task. That pattern
+costs one CLI invocation and one agent turn per item and hits API rate limits.
 
 Current behavior to account for, and recheck when the binary changes:
 
@@ -50,87 +53,43 @@ Current behavior to account for, and recheck when the binary changes:
 
 ## 3. Collect one reusable snapshot
 
-Discover projects and people once per workspace. Keep only requested projects in `projects.json` before running the collector. Use a fresh analysis directory for each acquisition.
+Discover projects and people once per workspace. Keep only requested projects in `projects.json`, then pass their UUIDs to `snapshot` with one `--only-project` flag each. Use a fresh analysis directory for each acquisition.
 
 ```bash
 plane-cli --workspace "$WS" project list -o json > "$PLANE_ANALYSIS_DIR/projects.json"
 plane-cli --workspace "$WS" workspace members --limit 0 -o json > "$PLANE_ANALYSIS_DIR/members.json"
 # For an ambiguous person, search once rather than guessing from a display name:
 plane-cli --workspace "$WS" workspace members --search 'person@example.com' --exact --limit 0 -o json
+# Take each requested project UUID from projects.json:
+PROJECT_ID="<requested-project-uuid>"
 ```
 
-For several workspaces, collect each requested workspace and combine their project arrays. Project rows contain `workspace`, `id` and `identifier`. Some CLI lists print a human message when empty, even in JSON mode. Verify an empty scope; do not turn non-JSON output or a failed command into zero work.
+For several workspaces, run `snapshot --all-workspaces` with an IAT to collect every visible workspace in one call. It cannot be combined with `--workspace`, so when the scope pins specific projects to specific workspaces, fall back to one `snapshot --workspace` run per requested workspace with `--only-project` and merge the project arrays. Project rows contain `workspace`, `id` and `identifier`. Some CLI lists print a human message when empty, even in JSON mode. Verify an empty scope; do not turn non-JSON output or a failed command into zero work.
 
-For complete work-item fields, use `raw GET` on the same collection endpoint used internally by reports. Paths are relative to `/api/v1`; `raw` preserves server fields but **does not paginate**. There is no `raw --all` or `raw --cursor` flag.
+`--all-workspaces` is rejected when a workspace is already selected, whether that selection comes from `--workspace`, from the `PLANE_WORKSPACE` environment variable, or from `default_workspace` in the config file. Clear the selection with `env -u PLANE_WORKSPACE` (or unset `default_workspace` in the config file), or drop `--all-workspaces` and pass `--workspace` explicitly. A configured default project is not inherited either: omit `--project` to collect every project in scope, and narrow with `--project` or `--only-project`.
 
-Run the following as one local execution, not one agent turn per page. It uses Python's standard library and the authenticated CLI, preserves expanded fields, encodes cursors, detects incomplete pagination and deduplicates item IDs. It writes the snapshot only after every selected project succeeds.
+For complete work-item fields, use `snapshot` below. `raw GET` reaches the same collection endpoint, with paths relative to `/api/v1`, and preserves server fields, but **does not paginate**. There is no `raw --all` or `raw --cursor` flag.
+
+Run the following once: it collects every selected project in one CLI invocation, and the snapshot file is written only after the whole collection succeeds. Repeat `--only-project` for each project in scope.
 
 ```bash
-python3 - "$PLANE_ANALYSIS_DIR" <<'PY'
-import json, subprocess, sys
-from datetime import datetime, timezone
-from pathlib import Path
-from urllib.parse import quote, urlencode
-
-root = Path(sys.argv[1])
-projects = json.loads((root / "projects.json").read_text())
-if not isinstance(projects, list) or not projects:
-    raise SystemExit("Verify the project selection before collecting")
-started = datetime.now(timezone.utc).isoformat()
-records, coverage = {}, []
-for project in projects:
-    ws, pid = project["workspace"], project["id"]
-    endpoint = f"/workspaces/{quote(ws, safe='')}/projects/{quote(pid, safe='')}/work-items/"
-    cursor, seen, ids, duplicates = None, set(), set(), 0
-    for page_number in range(1, 10001):
-        query = {"expand": "assignees,state,labels", "per_page": 100}
-        if cursor:
-            query["cursor"] = cursor
-        try:
-            result = subprocess.run(
-                ["plane-cli", "raw", "GET", endpoint + "?" + urlencode(query)],
-                check=True, capture_output=True, text=True,
-            )
-        except subprocess.CalledProcessError as error:
-            (root / "fetch-error.txt").write_text(error.stderr or str(error))
-            raise SystemExit(f"{ws}/{pid}: fetch failed; inspect {root / 'fetch-error.txt'}")
-        page = json.loads(result.stdout)
-        if not isinstance(page, dict) or not isinstance(page.get("results"), list):
-            raise SystemExit("Unknown list schema: verify pagination before claiming completeness")
-        more = page.get("next_page_results")
-        if not isinstance(more, bool):
-            raise SystemExit("Missing pagination status; snapshot is incomplete")
-        for item in page["results"]:
-            iid = item["id"]
-            if not isinstance(iid, str) or not iid:
-                raise SystemExit("Invalid item ID; snapshot is incomplete")
-            duplicates += int(iid in ids)
-            ids.add(iid)
-            records[(ws, pid, iid)] = {
-                "workspace": ws, "project_id": pid,
-                "project_identifier": project["identifier"], "item": item,
-            }
-        if not more:
-            break
-        cursor = page.get("next_cursor")
-        if not isinstance(cursor, str) or not cursor or cursor in seen:
-            raise SystemExit("Missing or repeated next cursor; snapshot is incomplete")
-        seen.add(cursor)
-    else:
-        raise SystemExit("Pagination safety limit reached; snapshot is incomplete")
-    coverage.append({"workspace": ws, "project_id": pid, "items": len(ids),
-                     "pages": page_number, "duplicates": duplicates})
-snapshot = {"started_at": started,
-            "finished_at": datetime.now(timezone.utc).isoformat(),
-            "coverage": coverage, "records": list(records.values())}
-(root / "snapshot.json").write_text(json.dumps(snapshot, ensure_ascii=False))
-print(json.dumps({"coverage": coverage, "unique_items": len(records)}))
-PY
+plane-cli snapshot --workspace "$WS" --only-project "$PROJECT_ID" --out "$PLANE_ANALYSIS_DIR/snapshot.json" -o json
 ```
 
-If the server returns a bare array or another pagination schema, inspect one response and adapt the collector to that documented contract. A short page alone does not prove completeness. Preserve filters on subsequent pages; compare totals when supplied. Record inaccessible projects, API errors and exclusions. Stop on 401/403; handle 429 with bounded backoff, not parallel retries. Do not present partial data as a company-wide total.
+The snapshot file is one JSON object with a top-level `records[]` array, where each record carries `workspace`, `project_id`, `project_identifier` and `item` (the raw work-item object), plus top-level `coverage` and `scope`.
 
-Keep raw JSON local. Use one Python/jq aggregation pass to emit compact per-person/product tables, coverage and a shortlist of evidence IDs. Reuse this snapshot for alternate groupings and follow-up questions; refresh when the question requires newer data. A CLI invocation can contain many HTTP requests: optimize both model turns and server traffic.
+`snapshot` walks cursor pagination for every selected project, preserves the
+server's work-item fields, deduplicates by item ID, and records `coverage` with
+fetched/retained counts. Inspect one record before aggregating: state, assignee
+and label values can be UUID strings or expanded objects. Use
+`--all-workspaces` with an IAT, `--only-project` to narrow scope, and
+`--since` / `--until` / `--date-field` to reduce the local file; the applied
+filter is recorded in `scope`. A short page alone does not prove completeness:
+check `coverage` and stop on API errors. Keep raw JSON local and use one
+Python/jq aggregation pass to emit compact tables and a shortlist of evidence
+IDs. Reuse this snapshot for alternate groupings and follow-up questions.
+
+Refresh the snapshot when the question requires newer data. A CLI invocation can contain many HTTP requests: optimize both model turns and server traffic.
 
 ## 4. Normalize before calculating
 

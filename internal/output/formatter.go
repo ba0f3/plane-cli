@@ -2,6 +2,7 @@ package output
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 
 	"github.com/fatih/color"
@@ -26,6 +27,13 @@ func NewFormatter(format string, noColor bool) *Formatter {
 }
 
 func (f *Formatter) Print(data interface{}) error {
+	return f.Fprint(os.Stdout, data)
+}
+
+// Fprint writes the formatted payload to the given writer. It applies the same
+// normalization as Print, so structured output keeps snake_case keys in both
+// JSON and YAML.
+func (f *Formatter) Fprint(w io.Writer, data interface{}) error {
 	format := NormalizeFormat(f.Format)
 	if err := ValidateFormat(format); err != nil {
 		return err
@@ -33,32 +41,32 @@ func (f *Formatter) Print(data interface{}) error {
 
 	switch format {
 	case "json":
-		return f.printJSON(data)
+		return f.writeJSON(w, data)
 	case "yaml":
-		return f.printYAML(data)
+		return f.writeYAML(w, data)
 	}
 
 	return nil
 }
 
-func (f *Formatter) printJSON(data interface{}) error {
+func (f *Formatter) writeJSON(w io.Writer, data interface{}) error {
 	normalized, err := normalizeStructuredOutput(data)
 	if err != nil {
 		return err
 	}
 
-	encoder := json.NewEncoder(os.Stdout)
+	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(normalized)
 }
 
-func (f *Formatter) printYAML(data interface{}) error {
+func (f *Formatter) writeYAML(w io.Writer, data interface{}) error {
 	normalized, err := normalizeStructuredOutput(data)
 	if err != nil {
 		return err
 	}
 
-	encoder := yaml.NewEncoder(os.Stdout)
+	encoder := yaml.NewEncoder(w)
 	defer func() {
 		_ = encoder.Close()
 	}()

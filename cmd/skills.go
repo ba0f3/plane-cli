@@ -47,6 +47,7 @@ Use this skill when an agent needs to inspect or operate Plane through ` + "`pla
 6. For Wiki Markdown, use ` + "`wiki create --file`" + ` / ` + "`wiki update --file`" + ` or ` + "`--markdown`" + `. The CLI sends Markdown source to Plane; do not pre-render it to HTML unless the user explicitly asks to use ` + "`--html`" + `.
 7. Treat delete/archive/administrative operations as destructive. Confirm the target from read output before issuing a destructive mutation when the user's request is not already explicit.
 8. Use ` + "`plane-cli <command> --help`" + ` for detailed runtime help if a flag or argument is unclear. Re-run ` + "`plane-cli skills`" + ` after upgrading the binary.
+9. For workload, report, or analysis requests, collect one snapshot and calculate locally: run ` + "`plane-cli snapshot`" + ` once and read its output file. Do not run ` + "`issue list`" + ` followed by ` + "`issue view <id>`" + ` for every task; that costs one CLI call and one agent turn per item and hits API rate limits.
 
 ## Authentication and configuration
 
@@ -83,9 +84,9 @@ plane-cli issue list -o json
 plane-cli workspace list -o json
 plane-cli project list -o json
 
-# Workspace/project reporting
+# Workspace/project reporting - collect once, then calculate locally
+plane-cli --workspace design snapshot --out ./design-snapshot.json -o json
 plane-cli --workspace design report summary -o json
-plane-cli --workspace design report workload -o json
 
 # Wiki Markdown import
 plane-cli --workspace engineering wiki create --name "Runbook" --file ./runbook.md

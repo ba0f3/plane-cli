@@ -27,6 +27,9 @@ func TestRenderSkillDescribesRunningCLI(t *testing.T) {
 	assert.Contains(t, skill, "### `plane-cli raw`")
 	assert.Contains(t, skill, "### `plane-cli skills`")
 	assert.Contains(t, skill, "`-o, --output`: Output format: json, yaml")
+	assert.Contains(t, skill, "### `plane-cli snapshot`")
+	assert.Contains(t, skill, "collect one snapshot and calculate locally")
+	assert.Contains(t, skill, "Do not run `issue list` followed by `issue view <id>` for every task")
 }
 
 func TestSkillsCommandDoesNotRequireConfig(t *testing.T) {
